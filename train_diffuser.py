@@ -168,7 +168,7 @@ def train(dataset, vae, diffuser, model_dir, lr, epochs, batch_size, val_split=0
 
 
 def main():
-    parser = argparse.ArgumentParser(description="Train Adversarial VAE model")
+    parser = argparse.ArgumentParser(description="Train diffusion model")
     # dir parser
     parser.add_argument("--class1_dir", type=str, required=True, help="dir for healthy class")
     parser.add_argument("--class2_dir", type=str, required=True, help="dir for defective class")
