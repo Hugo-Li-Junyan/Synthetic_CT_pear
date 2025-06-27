@@ -27,7 +27,7 @@ def vae_generate(model_dir, save_dir, batch_size:int=2, batches:int=16):
         param.requires_grad = False
 
     # load Diffuser
-    diffuser_pth = os.path.join(model_dir, 'diffuser_best.pth')
+    diffuser_pth = os.path.join(model_dir, 'diffuser_checkpoint.pth')
     diffuser_hyperparameter_pth = os.path.join(model_dir, 'diffuser_hyperparameter.json')
     with open(diffuser_hyperparameter_pth, 'r') as file:
         diffuser_hyperparameter = json.load(file)
