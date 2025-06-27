@@ -1,9 +1,9 @@
 import numpy as np
 import torch
-from generation.component.vae import VAE
+from component.vae import VAE
 import os
 import nibabel as nib
-from generation.component.diffuser import LatentDiffusion
+from component.diffuser import LatentDiffusion
 
 
 def vae_generate(vae, diffuser, save_dir, batch_size=16, batches=10):

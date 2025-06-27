@@ -1,12 +1,12 @@
 import numpy as np
 import torch
 from torch.utils.data import DataLoader
-from generation.component.vae import VAE
-from generation.component.dataset import MedicalImageDataset
-from visualization.visualization import plot_volume
+from component.vae import VAE
+from component.dataset import MedicalImageDataset
+from utils.visualization import plot_volume
 import os
 import nibabel as nib
-from generation.component.diffuser import LatentDiffusion
+from component.diffuser import LatentDiffusion
 
 
 def linear(w,v0,v1):

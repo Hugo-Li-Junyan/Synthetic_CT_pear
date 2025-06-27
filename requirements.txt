@@ -10,3 +10,4 @@ nibabel~=5.3.2
 torchio
 umap-learn
 pytorch-fid
+imageio
