@@ -188,7 +188,6 @@ def main():
     parser.add_argument("--batch_size", type=int, default=16, help="batch size")
     parser.add_argument("--random_state", type=int, default=42, help="random_state")
 
-
     args = parser.parse_args()
     transform = tio.Compose([
         tio.RandomFlip(axes=(0, 1)),

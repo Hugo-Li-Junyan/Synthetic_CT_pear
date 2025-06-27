@@ -7,10 +7,13 @@ from component.diffuser import LatentDiffusion
 import json
 
 
-def vae_generate(model_dir, model_id, save_dir, batch_size:int=2, batches:int=16):
+def vae_generate(model_dir, save_dir, batch_size:int=2, batches:int=16):
+    device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
+    print('Using', 'GPU' if torch.cuda.is_available() else 'CPU')
+
     # load VAE
-    vae_pth = os.path.join(model_dir, model_id, 'checkpoint.pth')
-    vae_hyperparameter_pth = os.path.join(model_dir, model_id, 'vae_hyperparameter.json')
+    vae_pth = os.path.join(model_dir, 'checkpoint.pth')
+    vae_hyperparameter_pth = os.path.join(model_dir, 'vae_hyperparameter.json')
     with open(vae_hyperparameter_pth, 'r') as file:
         vae_hyperparameter = json.load(file)
     vae = VAE(input_shape=(1, 128, 128, 128),
@@ -18,23 +21,21 @@ def vae_generate(model_dir, model_id, save_dir, batch_size:int=2, batches:int=16
               base_channel=vae_hyperparameter["vae_base_channel"],
               flatten_latent_dim=None,
               with_residual=True)
-    vae_checkpoint = torch.load(vae_pth)
+    vae_checkpoint = torch.load(vae_pth, map_location=device)
     vae.load_state_dict(vae_checkpoint['vae_state_dict'])
 
     # load Diffuser
-    diffuser_pth = os.path.join(model_dir, model_id, 'diffuser_best.pth')
-    diffuser_hyperparameter_pth = os.path.join(model_dir, model_id, 'diffuser_hyperparameter.json')
+    diffuser_pth = os.path.join(model_dir, 'diffuser_best.pth')
+    diffuser_hyperparameter_pth = os.path.join(model_dir, 'diffuser_hyperparameter.json')
     with open(diffuser_hyperparameter_pth, 'r') as file:
         diffuser_hyperparameter = json.load(file)
     diffuser = LatentDiffusion(input_dim=(1, 32, 32, 32),
                                emb_dim=512,
                                base_channel=diffuser_hyperparameter['base channel'])
-    diffuser_checkpoint = torch.load(diffuser_pth)
+    diffuser_checkpoint = torch.load(diffuser_pth, map_location=device)
     diffuser.load_state_dict(diffuser_checkpoint['diffuser_state_dict'])
 
     # move to GPU
-    device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
-    print('Using', 'GPU' if torch.cuda.is_available() else 'CPU')
     vae = vae.to(device)
     diffuser = diffuser.to(device)
 
@@ -57,7 +58,6 @@ def vae_generate(model_dir, model_id, save_dir, batch_size:int=2, batches:int=16
 
 if __name__ == "__main__":
     # load vae model
-    model_dir = r"J:\SET-Mebios_CFD-VIS-DI0327\HugoLi\PomestoreID\Pear\for_training\model"
-    model_id = '20250614-104844'
+    model_dir = r"J:\SET-Mebios_CFD-VIS-DI0327\HugoLi\PomestoreID\Pear\for_training\model\20250614-104844"
     save_dir = r"J:\SET-Mebios_CFD-VIS-DI0327\HugoLi\PomestoreID\Pear\for_training\VAE_generation"
-    vae_generate(model_dir, model_id, save_dir, batch_size=2, batches=16) # batch_size * batches ~= 10 * dataset_size
+    vae_generate(model_dir, save_dir, batch_size=2, batches=16) # batch_size * batches ~= 10 * dataset_size
