@@ -41,24 +41,39 @@ def slerp(w, v0, v1):
     return s0 * v0 + s1 * v1
 
 
-def interpolate_latents(latent_vec1, latent_vec2, interpolation, diffuser, num_steps=11):
-    interpolated_latents = []
-    if diffuser:
-        print('Using diffuser')
-        latent_vec1 = diffuser.q_sample(latent_vec1, t=diffuser.timesteps - 1)
-        latent_vec2 = diffuser.q_sample(latent_vec2, t=diffuser.timesteps - 1)
-    for w in torch.linspace(0, 1, num_steps):
-        if interpolation == 'slerp':
-            z_interpolated = slerp(w, latent_vec1, latent_vec2)
-        elif interpolation == 'linear':
-            z_interpolated = linear(w, latent_vec1, latent_vec2)
+def compute_z(dir, vae, device, with_original=True):
+    with torch.no_grad():
+        img_0 = nib.load(dir).get_fdata()
+        img_0 = (img_0 - np.min(img_0)) / (np.max(img_0) - np.min(img_0))  # Normalize between 0 and 1
+        x_0 = torch.tensor(img_0, requires_grad=False, dtype=torch.float32).unsqueeze(0).unsqueeze(0).to(device)
+        mu_0, logvar_0 = vae.encode(x_0)
+        std_0 = torch.exp(0.5 * logvar_0)
+        z_sampled_0 = mu_0 + torch.randn_like(std_0) * std_0
+        if with_original:
+            return img_0, z_sampled_0
         else:
-            raise ValueError('Only support linear or slerp interpolation')
+            return z_sampled_0
 
+
+def interpolate_latents(latent_vec1, latent_vec2, interpolation, diffuser, num_steps=11):
+    with torch.no_grad():
+        interpolated_latents = []
         if diffuser:
-            z_interpolated = diffuser.denoise(z_interpolated, steps=100)
-        interpolated_latents.append(z_interpolated)
-    return interpolated_latents
+            print('Using diffuser')
+            latent_vec1 = diffuser.q_sample(latent_vec1, t=diffuser.timesteps - 1)
+            latent_vec2 = diffuser.q_sample(latent_vec2, t=diffuser.timesteps - 1)
+        for w in torch.linspace(0, 1, num_steps):
+            if interpolation == 'slerp':
+                z_interpolated = slerp(w, latent_vec1, latent_vec2)
+            elif interpolation == 'linear':
+                z_interpolated = linear(w, latent_vec1, latent_vec2)
+            else:
+                raise ValueError('Only support linear or slerp interpolation')
+
+            if diffuser:
+                z_interpolated = diffuser.denoise(z_interpolated, steps=100)
+            interpolated_latents.append(z_interpolated)
+        return interpolated_latents
 
 
 def line_interpolate(model_dir, save_dir, healthy_dir, defective_dir, diffusion=True, interpolation:str ='slerp'):
@@ -79,6 +94,8 @@ def line_interpolate(model_dir, save_dir, healthy_dir, defective_dir, diffusion=
     vae.load_state_dict(vae_checkpoint['vae_state_dict'])
     vae = vae.to(device)
     vae.eval()
+    for param in vae.parameters():
+        param.requires_grad = False
 
     diffuser = None
     # load Diffuser
@@ -94,36 +111,23 @@ def line_interpolate(model_dir, save_dir, healthy_dir, defective_dir, diffusion=
         diffuser.load_state_dict(diffuser_checkpoint['diffuser_state_dict'])
         diffuser = diffuser.to(device)
         diffuser.eval()
+        for param in diffuser.parameters():
+            param.requires_grad = False
 
-    with torch.no_grad():
-        img_0 = nib.load(healthy_dir).get_fdata()
-        img_0 = (img_0 - np.min(img_0)) / (np.max(img_0) - np.min(img_0))  # Normalize between 0 and 1
-        img_1 = nib.load(defective_dir).get_fdata()
-        img_1 = (img_1 - np.min(img_1)) / (np.max(img_1) - np.min(img_1))  # Normalize between 0 and 1
-        x_0 = torch.tensor(img_0, requires_grad=False, dtype=torch.float32).unsqueeze(0).unsqueeze(0).to(device)
-        x_1 = torch.tensor(img_1, requires_grad=False, dtype=torch.float32).unsqueeze(0).unsqueeze(0).to(device)
-        mu_0, logvar_0 = vae.encode(x_0)
-        mu_1, logvar_1 = vae.encode(x_1)
-        std_0 = torch.exp(0.5 * logvar_0)
-        std_1 = torch.exp(0.5 * logvar_1)
-        z_sampled_0 = mu_0 + torch.randn_like(std_0) * std_0
-        z_sampled_1 = mu_1 + torch.randn_like(std_1) * std_1
+    img0, z0 = compute_z(healthy_dir, vae, device, with_original=True)
+    img1, z1 = compute_z(defective_dir, vae, device, with_original=True)
+    # Interpolate between the sampled latent vectors
+    interpolated_latents = interpolate_latents(z0, z1, interpolation, diffuser, num_steps=11)
 
-        # Interpolate between the sampled latent vectors
-        interpolated_latents = interpolate_latents(z_sampled_0, z_sampled_1, interpolation, diffuser, num_steps=11)
-
-        # Decode interpolated latent vectors
-        origin_healthy = x_0.squeeze().cpu().numpy()
-        generated_images = [origin_healthy]
-        generated_images += [vae.decode(latent).squeeze().cpu().numpy() for latent in interpolated_latents]
-
-        origin_defective = x_1.squeeze().cpu().numpy()
-        generated_images.append(origin_defective)
+    # Decode interpolated latent vectors
+    generated_images = [vae.decode(latent).squeeze().cpu().numpy() for latent in interpolated_latents]
+    generated_images.insert(0, img0)
+    generated_images.append(img1)
 
     # Visualize one example (modify for 3D)
-    plot_volume(origin_healthy)
+    plot_volume(img0)
     plot_volume(generated_images[1])
-    plot_volume(origin_defective)
+    plot_volume(img1)
     plot_volume(generated_images[-2])
 
     for i, arr in enumerate(generated_images):

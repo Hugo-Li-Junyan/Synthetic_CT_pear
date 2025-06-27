@@ -23,6 +23,8 @@ def vae_generate(model_dir, save_dir, batch_size:int=2, batches:int=16):
               with_residual=True)
     vae_checkpoint = torch.load(vae_pth, map_location=device)
     vae.load_state_dict(vae_checkpoint['vae_state_dict'])
+    for param in vae.parameters():
+        param.requires_grad = False
 
     # load Diffuser
     diffuser_pth = os.path.join(model_dir, 'diffuser_best.pth')
@@ -34,6 +36,8 @@ def vae_generate(model_dir, save_dir, batch_size:int=2, batches:int=16):
                                base_channel=diffuser_hyperparameter['base channel'])
     diffuser_checkpoint = torch.load(diffuser_pth, map_location=device)
     diffuser.load_state_dict(diffuser_checkpoint['diffuser_state_dict'])
+    for param in diffuser.parameters():
+        param.requires_grad = False
 
     # move to GPU
     vae = vae.to(device)

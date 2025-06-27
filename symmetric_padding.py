@@ -2,7 +2,6 @@ import os
 import numpy as np
 from scipy.ndimage import zoom
 import nibabel as nib
-from utils.monoenegetic_io import read_volume_nii
 
 
 def min_max_16bit_to_8bit(img):
