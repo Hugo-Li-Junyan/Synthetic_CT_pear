@@ -155,7 +155,7 @@ def weighted_pool3d(input, kernel_size, stride=None, padding=0):
 if __name__ == '__main__':
     # Create dataset instance
     x = torch.randn((1,1,128,128,128))
-    gan = PatchGAN(x_shape=(1,128,128,128), patch_size=16, base_channel=32, with_residual=True, weight_fn='max')
+    gan = PatchGAN(x_shape=(1,128,128,128), patch_size=16, base_channel=16, with_residual=True, weight_fn='max')
 
 
     def count_parameters(model):

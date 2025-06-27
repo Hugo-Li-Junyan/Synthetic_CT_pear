@@ -17,19 +17,8 @@ import gc         # garbage collect library
 import argparse
 
 
-def anneal_function(epoch, total_epochs, min_val, max_val, slope=10):
-    """Sigmoid Annealing"""
-    if min_val == max_val:
-        return min_val
-    progress = epoch / total_epochs
-    return min_val + (max_val - min_val) / (1 + np.exp(-slope * (progress - 0.5)))
-
-def decaying_function(gan_loss, max_gamma):
-    return min(math.exp(-20 * gan_loss + 2),max_gamma)
-
-
 def train(dataset, vae, save_dir, gan, vae_lr=1e-4, gan_lr=1e-4, epochs=500, batch_size=8, val_split=0.1,
-          load_model_id=None, beta=1e-6, max_gamma=1.0, loss_criterion='MSE', random_state=42):
+          load_model_id=None, beta=1e-6, loss_criterion='MAE', random_state=42):
     # device ready
     device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
     print('Using', 'GPU' if torch.cuda.is_available() else 'CPU')
@@ -38,9 +27,7 @@ def train(dataset, vae, save_dir, gan, vae_lr=1e-4, gan_lr=1e-4, epochs=500, bat
 
     # components ready
     vae_optimizer = optim.Adam(vae.parameters(), lr=vae_lr)
-    vae_scheduler = lr_scheduler.CosineAnnealingWarmRestarts(vae_optimizer, T_0=10, T_mult=2)
     gan_optimizer = optim.Adam(gan.parameters(), betas=(0.5, 0.999), lr=gan_lr)
-    gan_scheduler = lr_scheduler.CosineAnnealingWarmRestarts(gan_optimizer, T_0=10, T_mult=2)
 
     # load from checkpoint
     start_epoch = 0
@@ -53,8 +40,6 @@ def train(dataset, vae, save_dir, gan, vae_lr=1e-4, gan_lr=1e-4, epochs=500, bat
             gan.load_state_dict(checkpoint['gan_state_dict'])
             vae_optimizer.load_state_dict(checkpoint['vae_optimizer_state_dict'])
             gan_optimizer.load_state_dict(checkpoint['gan_optimizer_state_dict'])
-            vae_scheduler.load_state_dict(checkpoint['vae_scheduler_state_dict'])
-            gan_scheduler.load_state_dict(checkpoint['gan_scheduler_state_dict'])
             start_epoch = checkpoint['epoch']
             print(f"Loaded model from {checkpoint_path}")
             del checkpoint
@@ -76,11 +61,9 @@ def train(dataset, vae, save_dir, gan, vae_lr=1e-4, gan_lr=1e-4, epochs=500, bat
                        'vae_featuremap_size': vae.featuremap_size, 'vae_base_channel': vae.base_channel,
                        'vae_use_residual': vae.with_residual, 'vae learning rate': vae_lr, 'loss_fn': loss_criterion,
                        'epochs': epochs, 'batch_size': batch_size, 'beta': beta, 'vae_optimizer': 'Adam',
-                       'vae_scheduler': 'Cosine annealing warm restarts', 'gan_optimizer': 'Adam',
-                       'gan learning rate': gan_lr, 'gan_scheduler': 'Cosine annealing warm restarts',
-                       'max_gamma': max_gamma, 'gan_patch_size': gan.patch_size,
-                       'gan_base_channel': gan.base_channel, 'gan_with_residual': gan.with_residual,
-                       'gan_weight_function': gan.weight_fn}
+                       'gan_optimizer': 'Adam', 'gan learning rate': gan_lr, 'gamma': 0.01,
+                       'gan_patch_size': gan.patch_size, 'gan_base_channel': gan.base_channel,
+                       'gan_with_residual': gan.with_residual, 'gan_weight_function': gan.weight_fn}
 
     # for saving
     os.makedirs(save_dir, exist_ok=True)
@@ -89,6 +72,7 @@ def train(dataset, vae, save_dir, gan, vae_lr=1e-4, gan_lr=1e-4, epochs=500, bat
     os.makedirs(model_dir, exist_ok=True)
     log_path = os.path.join(model_dir, "vae_log.csv")
     checkpoint_path = os.path.join(model_dir, "checkpoint.pth")
+    best_model_path = os.path.join(model_dir, "best.pth")
     hyperparameter_path = os.path.join(model_dir, "vae_hyperparameter.json")
     with open(hyperparameter_path, "w") as f:
         json.dump(hyperparameters, f, indent=4)
@@ -96,12 +80,13 @@ def train(dataset, vae, save_dir, gan, vae_lr=1e-4, gan_lr=1e-4, epochs=500, bat
     with open(log_path, "w", newline="") as f:
         writer = csv.writer(f)
         writer.writerow(["Epoch", "Train_Recon", "Train_KL", "Train_Adv", "Train_GAN",
-                         "Val_Recon", "Val_KL", "Val_Adv", "Val_GAN", "VAE LR", "GAN LR", "Beta", "Gamma"])
+                         "Val_Recon", "Val_KL", "Val_Adv", "Val_GAN", "Beta"])
 
     # start training
     print('Training starts now')
+    best_val_score = torch.inf
+    early_stop_count = 0
     for epoch in range(start_epoch, epochs+1):
-        # gamma = anneal_function(epoch, epochs, min_gamma, max_gamma)
         # train
         vae.train()
         train_recon_loss, train_kl_loss = 0.0, 0.0
@@ -130,9 +115,8 @@ def train(dataset, vae, save_dir, gan, vae_lr=1e-4, gan_lr=1e-4, epochs=500, bat
             recon_loss, kl_loss = vae.loss_function(reconstructed_x, x, z_mean, z_logvar, beta=beta,
                                                     criterion=loss_criterion)
             vae_loss = recon_loss + kl_loss
-            gamma = decaying_function(float(gan_loss.item()), max_gamma)
             adv_loss = gan.adversarial_loss(x, reconstructed_x)
-            vae_loss = vae_loss + adv_loss * gamma
+            vae_loss = vae_loss + adv_loss * 0.01
             vae_optimizer.zero_grad()
             vae_loss.backward()
             torch.nn.utils.clip_grad_norm_(vae.parameters(), 1.0)
@@ -140,14 +124,13 @@ def train(dataset, vae, save_dir, gan, vae_lr=1e-4, gan_lr=1e-4, epochs=500, bat
 
             train_recon_loss += recon_loss.item() * x.size(0)
             train_kl_loss += kl_loss.item() * x.size(0)
-            avg_gamma += gamma * x.size(0)
+
             train_adv_loss += adv_loss.item() * x.size(0)
             train_gan_loss += gan_loss.item() * x.size(0)
         train_recon_loss /= train_size
         train_kl_loss /= train_size
         train_adv_loss /= train_size
         train_gan_loss /= train_size
-        avg_gamma /= train_size
 
         # validation
         vae.eval()
@@ -173,20 +156,17 @@ def train(dataset, vae, save_dir, gan, vae_lr=1e-4, gan_lr=1e-4, epochs=500, bat
         val_adv_loss /= val_size
         val_gan_loss /= val_size
 
-        current_vae_lr = vae_scheduler.get_last_lr()[0]
-        current_gan_lr = gan_scheduler.get_last_lr()[0]
-        print(f"Epoch [{epoch + 1}/{epochs}] | Train Recon: {train_recon_loss:.7f} | Train KL: {train_kl_loss:.7f} | "
-              f"Val Recon: {val_recon_loss:.7f} | Val KL: {val_kl_loss:.7f} | VAE LR: {current_vae_lr:.7f} | Beta: {beta:.7f}")
-        print(f"Train Adv {train_adv_loss:.7f} | Train GAN: {train_gan_loss:.7f} | Val Adv: {val_adv_loss:.7f} | Val GAN: {val_gan_loss:.7f} | GAN LR: {current_gan_lr:.7f}| Gamma: {avg_gamma:.7f}")
 
-        vae_scheduler.step()
-        gan_scheduler.step()
+        print(f"Epoch [{epoch + 1}/{epochs}] | Train Recon: {train_recon_loss:.7f} | Train KL: {train_kl_loss:.7f} | "
+              f"Val Recon: {val_recon_loss:.7f} | Val KL: {val_kl_loss:.7f}  | Beta: {beta:.7f}")
+        print(f"Train Adv {train_adv_loss:.7f} | Train GAN: {train_gan_loss:.7f} | Val Adv: {val_adv_loss:.7f} | Val GAN: {val_gan_loss:.7f}")
+
 
         # log vae_loss
         with open(log_path, "a", newline="") as f:
             writer = csv.writer(f)
             writer.writerow([epoch + 1, train_recon_loss, train_kl_loss, train_adv_loss, train_gan_loss, val_recon_loss,
-                             val_kl_loss, val_adv_loss, val_gan_loss, current_vae_lr, current_gan_lr, beta, avg_gamma])
+                             val_kl_loss, val_adv_loss, val_gan_loss, beta])
 
         # Save latest model (in case of crash)
         if (epoch+1) % 3 == 0:
@@ -195,11 +175,27 @@ def train(dataset, vae, save_dir, gan, vae_lr=1e-4, gan_lr=1e-4, epochs=500, bat
                                'vae_state_dict': vae.state_dict(),
                                'gan_state_dict': gan.state_dict(),
                                'vae_optimizer_state_dict': vae_optimizer.state_dict(),
-                               'gan_optimizer_state_dict': gan_optimizer.state_dict(),
-                               'vae_scheduler_state_dict': vae_scheduler.state_dict(),
-                               'gan_scheduler_state_dict': gan_scheduler.state_dict()
+                               'gan_optimizer_state_dict': gan_optimizer.state_dict()
                                }
             torch.save(checkpoint_info, checkpoint_path)
+        # save best model
+        if val_recon_loss < best_val_score:
+            checkpoint_info = {'epoch': epoch+1,
+                               'random_state': random_state,
+                               'vae_state_dict': vae.state_dict(),
+                               'gan_state_dict': gan.state_dict(),
+                               'vae_optimizer_state_dict': vae_optimizer.state_dict(),
+                               'gan_optimizer_state_dict': gan_optimizer.state_dict()
+                               }
+            torch.save(checkpoint_info, best_model_path)
+            best_val_score = val_recon_loss
+            early_stop_count = 0
+            print(f'New best model found')
+        else:
+            early_stop_count += 1
+            if (early_stop_count + 1) % 10 == 0:
+                print(f'Validation loss has not been reduced for {early_stop_count} epochs')
+
 
 def main():
     parser = argparse.ArgumentParser(description="Train Adversarial VAE model")
@@ -213,7 +209,7 @@ def main():
     parser.add_argument("--vae_base_channel", type=int, default=256, help="VAE base channel")
     # GAN parser
     parser.add_argument("--gan_patch_size", type=int, default=16, help="GAN featuremap size")
-    parser.add_argument("--gan_base_channel", type=int, default=32, help="GAN base channel")
+    parser.add_argument("--gan_base_channel", type=int, default=16, help="GAN base channel")
     parser.add_argument("--gan_weight_fn", type=str, default='weighted', help="GAN weight fn")
     # train parser
     parser.add_argument("--vae_lr", type=float, default=1e-4, help="vae learning rate")
@@ -221,7 +217,6 @@ def main():
     parser.add_argument("--epochs", type=int, default=500, help="epochs")
     parser.add_argument("--batch_size", type=int, default=4, help="batch size")
     parser.add_argument("--beta", type=float, default=1e-6, help="beta")
-    parser.add_argument("--max_gamma", type=float, default=1, help="max gamma")
     parser.add_argument("--loss_criterion", type=str, default='MAE', help="loss_criterion")
     parser.add_argument("--random_state", type=int, default=42, help="random_state")
     parser.add_argument("--load_model_id", type=str, default='', help="load_model_id")
@@ -243,8 +238,7 @@ def main():
                    with_residual=True, weight_fn=args.gan_weight_fn)
 
     train(dataset, vae=vae, save_dir=args.save_dir, gan=gan, vae_lr=args.vae_lr, gan_lr=args.gan_lr, epochs=args.epochs,
-          batch_size=args.batch_size, val_split=0.1, beta=args.beta, max_gamma=args.max_gamma,
-          loss_criterion=args.loss_criterion, random_state=args.random_state, load_model_id=args.load_model_id)
+          batch_size=args.batch_size, val_split=0.1, beta=args.beta, loss_criterion=args.loss_criterion, random_state=args.random_state, load_model_id=args.load_model_id)
 
 
 if __name__ == '__main__':
