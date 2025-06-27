@@ -66,10 +66,10 @@ def matrix_interpolate(model_dir, save_dir, topleft_dir, lowerleft_dir, lowerrig
             arr = ((arr - np.min(arr)) / (np.max(arr) - np.min(arr)) * 255).astype(np.uint8)
             img = nib.Nifti1Image(arr, np.eye(4))
             nib.save(img, os.path.join(save_dir, f'{row}_{i}.nii'))
-    nib.save(img_topleft,os.path.join(save_dir, 'topleft.nii'))
-    nib.save(img_lowerleft, os.path.join(save_dir, 'lowerleft.nii'))
-    nib.save(img_lowerright, os.path.join(save_dir, 'lowerright.nii'))
-    nib.save(img_topright, os.path.join(save_dir, 'topright.nii'))
+    nib.save(nib.Nifti1Image(img_topleft, np.eye(4)),os.path.join(save_dir, 'topleft.nii'))
+    nib.save(nib.Nifti1Image(img_lowerleft, np.eye(4)), os.path.join(save_dir, 'lowerleft.nii'))
+    nib.save(nib.Nifti1Image(img_lowerright, np.eye(4)), os.path.join(save_dir, 'lowerright.nii'))
+    nib.save(nib.Nifti1Image(img_topright, np.eye(4)), os.path.join(save_dir, 'topright.nii'))
 
 if __name__ == "__main__":
     # load vae model
