@@ -29,13 +29,13 @@ def extract_dataset(in_dir, out_dir, label=''):
 
 
 if __name__ == '__main__':
-    class1_dir = r"J:\SET-Mebios_CFD-VIS-DI0327\HugoLi\PomestoreID\Pear\for_training\healthy"
-    class2_dir = r"J:\SET-Mebios_CFD-VIS-DI0327\HugoLi\PomestoreID\Pear\for_training\defective"
-    save_real_dir = r"J:\SET-Mebios_CFD-VIS-DI0327\HugoLi\PomestoreID\Pear\for_training\real_slices"
+    #class1_dir = r"J:\SET-Mebios_CFD-VIS-DI0327\HugoLi\PomestoreID\Pear\for_training\healthy"
+    #class2_dir = r"J:\SET-Mebios_CFD-VIS-DI0327\HugoLi\PomestoreID\Pear\for_training\defective"
+    #save_real_dir = r"J:\SET-Mebios_CFD-VIS-DI0327\HugoLi\PomestoreID\Pear\for_training\real_slices"
 
     fake_dir = r"J:\SET-Mebios_CFD-VIS-DI0327\HugoLi\PomestoreID\Pear\for_training\VAE_generation"
     save_fake_dir = r"J:\SET-Mebios_CFD-VIS-DI0327\HugoLi\PomestoreID\Pear\for_training\fake_slices"
 
-    extract_dataset(class1_dir, save_real_dir, label='healthy')
-    extract_dataset(class2_dir, save_real_dir, label='defective')
+    #extract_dataset(class1_dir, save_real_dir, label='healthy')
+    #extract_dataset(class2_dir, save_real_dir, label='defective')
     extract_dataset(fake_dir, save_fake_dir, label='fake')

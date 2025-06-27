@@ -64,4 +64,4 @@ if __name__ == "__main__":
     # load vae model
     model_dir = r"J:\SET-Mebios_CFD-VIS-DI0327\HugoLi\PomestoreID\Pear\for_training\model\20250614-104844"
     save_dir = r"J:\SET-Mebios_CFD-VIS-DI0327\HugoLi\PomestoreID\Pear\for_training\VAE_generation"
-    vae_generate(model_dir, save_dir, batch_size=2, batches=16) # batch_size * batches ~= 10 * dataset_size
+    vae_generate(model_dir, save_dir, batch_size=2, batches=3000) # batch_size * batches ~= 10 * dataset_size
