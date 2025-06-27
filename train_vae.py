@@ -91,7 +91,7 @@ def train(dataset, vae, save_dir, gan, vae_lr=1e-4, gan_lr=1e-4, epochs=500, bat
         vae.train()
         train_recon_loss, train_kl_loss = 0.0, 0.0
         train_adv_loss, train_gan_loss = 0.0, 0.0
-        avg_gamma = 0.0
+        #avg_gamma = 0.0
         for data in train_loader:
             x, _ = data
             x = x.to(device)
