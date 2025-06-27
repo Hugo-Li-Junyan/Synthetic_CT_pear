@@ -1,3 +1,4 @@
+import argparse
 import numpy as np
 import torch
 from component.vae import VAE
@@ -59,9 +60,16 @@ def vae_generate(model_dir, save_dir, batch_size:int=2, batches:int=16):
                 nib.save(img, os.path.join(save_dir, f'{count}.nii'))
                 count += 1
 
+def main():
+    parser = argparse.ArgumentParser(description="generate for vae")
+    # dir parser
+    parser.add_argument("--model_dir", type=str, required=True, help="model_dir")
+    parser.add_argument("--save_dir", type=str, required=True, help="save_dir")
+    parser.add_argument("--batch_size", type=int, default=4, help="batch size")
+    parser.add_argument("--batches", type=int, default=3000, help="number of batches")
+    args = parser.parse_args()
+    vae_generate(args.model_dir, args.save_dir, batch_size=args.batch_size, batches=args.batches)  # batch_size * batches ~= 10 * dataset_size
+
 
 if __name__ == "__main__":
-    # load vae model
-    model_dir = r"J:\SET-Mebios_CFD-VIS-DI0327\HugoLi\PomestoreID\Pear\for_training\model\20250614-104844"
-    save_dir = r"J:\SET-Mebios_CFD-VIS-DI0327\HugoLi\PomestoreID\Pear\for_training\VAE_generation"
-    vae_generate(model_dir, save_dir, batch_size=2, batches=3000) # batch_size * batches ~= 10 * dataset_size
+    main()
