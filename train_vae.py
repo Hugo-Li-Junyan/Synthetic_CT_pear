@@ -1,10 +1,8 @@
 import json
 import warnings
-import numpy as np
 import torchio as tio
 import torch.optim as optim
 from torch.utils.data import DataLoader, random_split
-import torch.optim.lr_scheduler as lr_scheduler
 import time
 import os
 from component.dataset import MedicalImageDataset
@@ -12,7 +10,6 @@ import torch
 import csv
 from component.vae import VAE
 from component.gan import PatchGAN
-import math
 import gc         # garbage collect library
 import argparse
 
