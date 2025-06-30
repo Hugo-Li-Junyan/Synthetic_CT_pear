@@ -85,6 +85,7 @@ def main(model_dir, healthy_dir, defective_dir, method='tsne', sample_size=64):
     elif method == 'volume':
         if sample_size != 1:
             warnings.warn('only visualize 1 sample')
+        print(f'label is {labels[0]} (0 for healthy, 1 for defective)')
         plot_volume(z[0, :, :, :, :].squeeze().cpu().numpy())
     else:
         raise ValueError('only tsne and umap are supported')
@@ -95,4 +96,4 @@ if __name__ == "__main__":
     model_dir = r"J:\SET-Mebios_CFD-VIS-DI0327\HugoLi\PomestoreID\Pear\for_training\model\20250626-021325"
     healthy_dir = r"J:\SET-Mebios_CFD-VIS-DI0327\HugoLi\PomestoreID\Pear\for_training\healthy"
     defective_dir = r"J:\SET-Mebios_CFD-VIS-DI0327\HugoLi\PomestoreID\Pear\for_training\defective"
-    main(model_dir, healthy_dir, defective_dir, method='volume', sample_size=1)
+    main(model_dir, healthy_dir, defective_dir, method='tsne', sample_size=64)
