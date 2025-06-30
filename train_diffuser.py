@@ -181,7 +181,7 @@ def main():
     parser.add_argument("--diffuser_base_channel", type=int, default=128, help="diffuser base channel")
 
     # hyperparameter
-    parser.add_argument("--lr", type=float, default=1e-5, help="gan learning rate")
+    parser.add_argument("--lr", type=float, default=1e-6, help="gan learning rate")
     parser.add_argument("--epochs", type=int, default=800, help="epochs")
     parser.add_argument("--batch_size", type=int, default=8, help="batch size")
     parser.add_argument("--random_state", type=int, default=42, help="random_state")
