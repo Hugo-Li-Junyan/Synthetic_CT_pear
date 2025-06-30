@@ -3,9 +3,10 @@ import torch
 from torch.utils.data import DataLoader, random_split
 from component import MedicalImageDataset
 from utils.metrics import mae, ssim, psnr
+from tqdm import tqdm
 
 
-def main(model_dir, healthy_dir, defective_dir, batch_size=4, val_split=0.1):
+def main(model_dir, healthy_dir, defective_dir, batch_size=2, val_split=0.1):
     device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
     print('Using', 'GPU' if torch.cuda.is_available() else 'CPU')
 
@@ -21,13 +22,13 @@ def main(model_dir, healthy_dir, defective_dir, batch_size=4, val_split=0.1):
 
     with torch.no_grad():
         MAE, SSIM, PSNR = 0.0, 0.0, 0.0
-        for data in val_loader:
+        for data in tqdm(val_loader, desc="Validating", unit="batch"):
             x, _ = data
             x = x.to(device)
             reconstructed_x, _, _ = vae(x)
-            MAE += mae(x, reconstructed_x) * x.size(0)
-            SSIM += ssim(x, reconstructed_x) * x.size(0)
-            PSNR += psnr(x, reconstructed_x) * x.size(0)
+            MAE += mae(x, reconstructed_x).item() * x.size(0)
+            SSIM += ssim(x, reconstructed_x).item() * x.size(0)
+            PSNR += psnr(x, reconstructed_x).item() * x.size(0)
         MAE /= val_size
         SSIM /= val_size
         PSNR /= val_size
