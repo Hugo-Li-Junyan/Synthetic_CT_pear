@@ -4,7 +4,7 @@ import torch
 from component import VAE, LatentDiffusion
 
 
-def load_vae(model_dir, device, with_rand_state=False):# load VAE
+def load_vae(model_dir, device, with_rand_state=False):
     vae_pth = os.path.join(model_dir, 'checkpoint.pth')
     vae_hyperparameter_pth = os.path.join(model_dir, 'vae_hyperparameter.json')
     with open(vae_hyperparameter_pth, 'r') as file:

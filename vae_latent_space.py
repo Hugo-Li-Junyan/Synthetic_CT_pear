@@ -1,6 +1,6 @@
 import torch
-from generation.component.vae import VAE
-from generation.component.dataset import MedicalImageDataset
+from component import VAE
+from component import MedicalImageDataset
 import os
 import matplotlib.pyplot as plt
 from torch.utils.data import DataLoader
