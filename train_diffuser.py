@@ -5,11 +5,11 @@ import torchio as tio
 import torch.optim.lr_scheduler as lr_scheduler
 from torch.utils.data import DataLoader, random_split
 import torch.optim as optim
-from component.vae import VAE
-from component.dataset import MedicalImageDataset
+from component import VAE
+from component import MedicalImageDataset
 import os
 import csv
-from component.diffuser import LatentDiffusion
+from component import LatentDiffusion
 
 
 def train(dataset, vae, diffuser, model_dir, lr, epochs, batch_size, val_split=0.1, early_stop_patience=50,
@@ -184,8 +184,8 @@ def main():
 
     # hyperparameter
     parser.add_argument("--lr", type=float, default=1e-5, help="gan learning rate")
-    parser.add_argument("--epochs", type=int, default=300, help="epochs")
-    parser.add_argument("--batch_size", type=int, default=16, help="batch size")
+    parser.add_argument("--epochs", type=int, default=800, help="epochs")
+    parser.add_argument("--batch_size", type=int, default=8, help="batch size")
     parser.add_argument("--random_state", type=int, default=42, help="random_state")
 
     args = parser.parse_args()
