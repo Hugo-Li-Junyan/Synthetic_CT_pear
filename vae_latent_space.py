@@ -68,7 +68,7 @@ def visualize_umap(z, labels, pca_components=50):
     plt.show()
 
 
-def main(model_dir, healthy_dir, defective_dir, method='tsne', sample_size=64):
+def main(model_dir, healthy_dir, defective_dir, method='tsne', sample_size=64, pca_components=None):
     device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
     print('Using', 'GPU' if torch.cuda.is_available() else 'CPU')
     dataset = MedicalImageDataset(healthy_dir, defective_dir)
@@ -80,9 +80,9 @@ def main(model_dir, healthy_dir, defective_dir, method='tsne', sample_size=64):
 
     z, labels = vae_latent(vae, dataset, sample_size, device)
     if method == 'tsne':
-        visualize_tsne(z, labels, pca_components=50)
+        visualize_tsne(z, labels, pca_components=pca_components)
     elif method == 'umap':
-        visualize_umap(z, labels, pca_components=50)
+        visualize_umap(z, labels, pca_components=pca_components)
     elif method == 'volume':
         if sample_size != 1:
             warnings.warn('only visualize 1 sample')
