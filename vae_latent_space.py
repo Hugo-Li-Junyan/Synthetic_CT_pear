@@ -97,4 +97,4 @@ if __name__ == "__main__":
     model_dir = r"J:\SET-Mebios_CFD-VIS-DI0327\HugoLi\PomestoreID\Pear\for_training\model\20250626-021325"
     healthy_dir = r"J:\SET-Mebios_CFD-VIS-DI0327\HugoLi\PomestoreID\Pear\for_training\healthy"
     defective_dir = r"J:\SET-Mebios_CFD-VIS-DI0327\HugoLi\PomestoreID\Pear\for_training\defective"
-    main(model_dir, healthy_dir, defective_dir, method='tsne', sample_size=64)
+    main(model_dir, healthy_dir, defective_dir, method='tsne', sample_size=32)
