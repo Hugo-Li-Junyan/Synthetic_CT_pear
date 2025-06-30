@@ -4,7 +4,7 @@
 #SBATCH --output=train_vae_job.out
 #SBATCH --error=train_vae_job.err
 
-#SBATCH --partition=gpu_a100
+#SBATCH --partition=gpu_h100
 #SBATCH --ntasks=1
 #SBATCH --cpus-per-gpu=8
 #SBATCH --time=48:00:00
