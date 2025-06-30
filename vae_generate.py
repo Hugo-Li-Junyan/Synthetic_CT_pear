@@ -65,7 +65,7 @@ def main():
     # dir parser
     parser.add_argument("--model_dir", type=str, required=True, help="model_dir")
     parser.add_argument("--save_dir", type=str, required=True, help="save_dir")
-    parser.add_argument("--batch_size", type=int, default=4, help="batch size")
+    parser.add_argument("--batch_size", type=int, default=2, help="batch size")
     parser.add_argument("--batches", type=int, default=3000, help="number of batches")
     args = parser.parse_args()
     vae_generate(args.model_dir, args.save_dir, batch_size=args.batch_size, batches=args.batches)  # batch_size * batches ~= 10 * dataset_size
