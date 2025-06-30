@@ -18,7 +18,7 @@ def train(dataset, vae, diffuser, model_dir, lr, epochs, batch_size, val_split=0
     diffuser = diffuser.to(device)
 
     optimizer = optim.Adam(diffuser.parameters(), lr=lr)
-    scheduler = lr_scheduler.CosineAnnealingWarmRestarts(optimizer, T_0=10, T_mult=2)
+    #scheduler = lr_scheduler.CosineAnnealingWarmRestarts(optimizer, T_0=10, T_mult=2)
 
     # load diffuser if exists
     start_epoch = 0
@@ -27,7 +27,7 @@ def train(dataset, vae, diffuser, model_dir, lr, epochs, batch_size, val_split=0
         checkpoint = torch.load(diffuser_checkpoint_path, map_location=device)
         diffuser.load_state_dict(checkpoint['diffuser_state_dict'])
         optimizer.load_state_dict(checkpoint['optimizer_state_dict'])
-        scheduler.load_state_dict(checkpoint['scheduler_state_dict'])
+        #scheduler.load_state_dict(checkpoint['scheduler_state_dict'])
         start_epoch = checkpoint['epoch']
         random_state = checkpoint['random_state']
         print(f"Loaded diffusion model from {diffuser_checkpoint_path}")
@@ -50,7 +50,7 @@ def train(dataset, vae, diffuser, model_dir, lr, epochs, batch_size, val_split=0
         'batch_size': batch_size,
         'timesteps': diffuser.timesteps,
         'optimizer': 'Adam',
-        'learning rate scheduler': 'Cosine annealing warm restarts'
+       # 'learning rate scheduler': 'Cosine annealing warm restarts'
     }
     hyperparameter_file = os.path.join(model_dir, 'diffuser_hyperparameter.json')
     with open(hyperparameter_file, "w") as f:
@@ -62,7 +62,7 @@ def train(dataset, vae, diffuser, model_dir, lr, epochs, batch_size, val_split=0
     if not os.path.exists(diffuser_checkpoint_path):
         with open(log_path, mode='w', newline='') as f:
             writer = csv.writer(f)
-            writer.writerow(["Epoch", "Train Loss", "Validation Loss", "Learning rate"])
+            writer.writerow(["Epoch", "Train Loss", "Validation Loss"])
 
     # start training
     vae.eval()  # freeze
@@ -110,14 +110,14 @@ def train(dataset, vae, diffuser, model_dir, lr, epochs, batch_size, val_split=0
                 val_loss += loss.item()
         val_loss /= val_size
 
-        current_lr = scheduler.get_last_lr()[0]
-        print(f"Epoch [{epoch + 1}/{epochs}] | Train Loss: {train_loss} | Val Loss: {val_loss} | LR: {current_lr}")
-        scheduler.step()
+        #current_lr = scheduler.get_last_lr()[0]
+        print(f"Epoch [{epoch + 1}/{epochs}] | Train Loss: {train_loss} | Val Loss: {val_loss}")
+        #scheduler.step()
 
         # Log to CSV
         with open(log_path, mode='a', newline='') as f:
             writer = csv.writer(f)
-            writer.writerow([epoch + 1, train_loss, val_loss, current_lr])
+            writer.writerow([epoch + 1, train_loss, val_loss])
 
         # Save latest model (in case of crash)
         if (epoch + 1) % 3 == 0:
@@ -125,7 +125,7 @@ def train(dataset, vae, diffuser, model_dir, lr, epochs, batch_size, val_split=0
                                'random_state': random_state,
                                'diffuser_state_dict': diffuser.state_dict(),
                                'optimizer_state_dict': optimizer.state_dict(),
-                               'scheduler_state_dict': scheduler.state_dict(),
+                               #'scheduler_state_dict': scheduler.state_dict(),
                                #'std_first_batch': std_first_batch
                                }
             torch.save(checkpoint_info, checkpoint_path)
@@ -136,7 +136,7 @@ def train(dataset, vae, diffuser, model_dir, lr, epochs, batch_size, val_split=0
                          'random_state': random_state,
                          'diffuser_state_dict': diffuser.state_dict(),
                          'optimizer_state_dict': optimizer.state_dict(),
-                         'scheduler_state_dict': scheduler.state_dict(),
+                         #'scheduler_state_dict': scheduler.state_dict(),
                          #'std_first_batch': std_first_batch
                          }
             torch.save(best_info, best_model_path)
@@ -154,7 +154,7 @@ def train(dataset, vae, diffuser, model_dir, lr, epochs, batch_size, val_split=0
                                'random_state': random_state,
                                'diffuser_state_dict': diffuser.state_dict(),
                                'optimizer_state_dict': optimizer.state_dict(),
-                               'scheduler_state_dict': scheduler.state_dict(),
+                               #'scheduler_state_dict': scheduler.state_dict(),
                                #'std_first_batch': std_first_batch
                                }
             torch.save(checkpoint_info, checkpoint_path)
