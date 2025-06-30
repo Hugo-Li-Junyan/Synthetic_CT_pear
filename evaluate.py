@@ -6,7 +6,7 @@ from utils.metrics import mae, ssim, psnr
 from tqdm import tqdm
 
 
-def main(model_dir, healthy_dir, defective_dir, batch_size=2, val_split=0.1):
+def main(model_dir, healthy_dir, defective_dir, batch_size=1, val_split=0.1):
     device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
     print('Using', 'GPU' if torch.cuda.is_available() else 'CPU')
 
@@ -38,7 +38,7 @@ def main(model_dir, healthy_dir, defective_dir, batch_size=2, val_split=0.1):
 
 
 if __name__ == '__main__':
-    model_dir = r"J:\SET-Mebios_CFD-VIS-DI0327\HugoLi\PomestoreID\Pear\for_training\model\20250614-104844"
+    model_dir = r"J:\SET-Mebios_CFD-VIS-DI0327\HugoLi\PomestoreID\Pear\for_training\model\20250626-021325"
     healthy_dir = r"D:\Hugo\healthy"
     defective_dir = r"D:\Hugo\defective"
-    main(model_dir, healthy_dir, defective_dir)
+    main(model_dir, healthy_dir, defective_dir, val_split=0.1)
