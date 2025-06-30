@@ -152,11 +152,11 @@ def ms_ssim(
 
 
 def mse(X: Tensor, Y: Tensor):
-    return ((X - Y).pow(2)).mean()
+    return ((X - Y).pow(2)).mean(dim=0)
 
 
 def mae(X: Tensor,Y: Tensor):
-    return ((X - Y).abs()).mean()
+    return ((X - Y).abs()).mean(dim=0)
 
 
 def psnr(X: Tensor, Y: Tensor, data_range: float = 1.0):
