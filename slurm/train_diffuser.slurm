@@ -17,9 +17,9 @@
 # Activate your environment
 source /data/leuven/362/vsc36240/miniconda3_wice/etc/profile.d/conda.sh
 conda activate base
-cd /data/leuven/362/vsc36240/project/synthetic_data/python_spectral/generation
+cd /data/leuven/362/vsc36240/project/synthetic_data/Synthetic_CT_pear
 # Run your script with parameters
-python ./train_diffuser.py --class1_dir ../../healthy --class2_dir ../../defective --save_dir ../../model --model_id 20250614-104844 --epochs 300 --random_state 369
+python ./train_diffuser.py --class1_dir ../healthy --class2_dir ../defective --save_dir ../model --model_id 20250626-021325 --epochs 300 --random_state 369
 
 # Optional: deactivate conda env (not necessary, but clean)
 conda deactivate
