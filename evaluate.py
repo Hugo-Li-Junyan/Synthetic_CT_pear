@@ -38,6 +38,6 @@ def main(model_dir, healthy_dir, defective_dir, batch_size=4, val_split=0.1):
 
 if __name__ == '__main__':
     model_dir = r"J:\SET-Mebios_CFD-VIS-DI0327\HugoLi\PomestoreID\Pear\for_training\model\20250614-104844"
-    healthy_dir = r"J:\SET-Mebios_CFD-VIS-DI0327\HugoLi\PomestoreID\Pear\for_training\healthy"
-    defective_dir = r"J:\SET-Mebios_CFD-VIS-DI0327\HugoLi\PomestoreID\Pear\for_training\defective"
+    healthy_dir = r"D:\Hugo\healthy"
+    defective_dir = r"D:\Hugo\defective"
     main(model_dir, healthy_dir, defective_dir)
