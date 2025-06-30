@@ -10,13 +10,14 @@ from utils.visualization import plot_volume
 from utils.load_models import load_vae
 
 
-def vae_latent(vae, dataset, sample_size):
+def vae_latent(vae, dataset, sample_size, device):
     test_loader = DataLoader(dataset, batch_size=sample_size, shuffle=True)
     vae.eval()
     labels = []
     with torch.no_grad():
         for data in test_loader:
             x, label = data
+            x = x.to(device)
             mu, logvar = vae.encode(x)
             z = vae.reparameterize(mu,logvar)
             labels.append(label)
@@ -77,7 +78,7 @@ def main(model_dir, healthy_dir, defective_dir, method='tsne', sample_size=64):
         param.requires_grad = False
     vae.eval()
 
-    z, labels = vae_latent(vae, dataset, sample_size)
+    z, labels = vae_latent(vae, dataset, sample_size, device)
     if method == 'tsne':
         visualize_tsne(z, labels, pca_components=50)
     elif method == 'umap':
