@@ -10,6 +10,9 @@ def vae_generate(model_dir, save_dir, batch_size:int=2, batches:int=16):
     device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
     print('Using', 'GPU' if torch.cuda.is_available() else 'CPU')
 
+    if not os.path.exists(save_dir):
+        os.mkdir(save_dir)
+
     # load VAE
     vae = load_vae(model_dir, device)
     for param in vae.parameters():

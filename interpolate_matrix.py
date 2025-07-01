@@ -9,10 +9,13 @@ from interpolate_line import interpolate_latents, compute_z
 from utils.load_models import load_vae, load_diffuser
 
 
-def matrix_interpolate(model_dir, save_dir, topleft_dir, lowerleft_dir, lowerright_dir, topright_dir,
+def main(model_dir, save_dir, topleft_dir, lowerleft_dir, lowerright_dir, topright_dir,
                        diffusion=True, interpolation:str ='slerp'):
     device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
     print('Using', 'GPU' if torch.cuda.is_available() else 'CPU')
+
+    if not os.path.exists(save_dir):
+        os.mkdir(save_dir)
 
     # load VAE
     vae = load_vae(model_dir, device)
@@ -62,4 +65,4 @@ if __name__ == "__main__":
     save_dir = r"J:\SET-Mebios_CFD-VIS-DI0327\HugoLi\PomestoreID\Pear\for_training\VAE_matrix_interpolation"
 
     # Create dataset instance
-    matrix_interpolate(model_dir, save_dir, topleft_dir, lowerleft_dir, lowerright_dir, topright_dir, interpolation='slerp', diffusion=False)
+    main(model_dir, save_dir, topleft_dir, lowerleft_dir, lowerright_dir, topright_dir, interpolation='slerp', diffusion=False)

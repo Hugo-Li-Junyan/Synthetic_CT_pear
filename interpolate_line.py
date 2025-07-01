@@ -76,9 +76,12 @@ def interpolate_latents(latent_vec1, latent_vec2, interpolation, diffuser, num_s
         return interpolated_latents
 
 
-def line_interpolate(model_dir, save_dir, healthy_dir, defective_dir, diffusion=True, interpolation:str ='slerp'):
+def main(model_dir, save_dir, healthy_dir, defective_dir, diffusion=True, interpolation:str ='slerp'):
     device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
     print('Using', 'GPU' if torch.cuda.is_available() else 'CPU')
+
+    if not os.path.exists(save_dir):
+        os.mkdir(save_dir)
 
     # load VAE
     vae = load_vae(model_dir, device)
@@ -124,4 +127,4 @@ if __name__ == "__main__":
     save_dir = r"J:\SET-Mebios_CFD-VIS-DI0327\HugoLi\PomestoreID\Pear\for_training\VAE_line_interpolation"
 
     # Create dataset instance
-    line_interpolate(model_dir, save_dir, healthy_pth, defective_pth, interpolation='slerp', diffusion=False)
+    main(model_dir, save_dir, healthy_pth, defective_pth, interpolation='slerp', diffusion=False)
