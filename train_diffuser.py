@@ -207,7 +207,7 @@ def main():
     # load diffuser
     diffuser = LatentDiffusion(input_dim=(1, 32, 32, 32), emb_dim=args.diffuser_emb_dim, base_channel=args.diffuser_base_channel)
     train(dataset, vae, diffuser, model_dir=model_dir, lr=args.lr, epochs=args.epochs, batch_size=args.batch_size, val_split=0.1,
-          early_stop_patience=150)
+          early_stop_patience=500)
 
 
 if __name__ == '__main__':
