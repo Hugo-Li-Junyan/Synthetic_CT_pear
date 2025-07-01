@@ -1,7 +1,7 @@
 from component.dataset import MedicalImageDataset
 import torchio as tio
 from torch.utils.data import DataLoader
-from visualization.visualization import plot_volume
+from utils.visualization import plot_volume
 import torch
 
 
