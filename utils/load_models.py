@@ -26,7 +26,7 @@ def load_vae(model_dir, device, with_rand_state=False):
 
 def load_diffuser(model_dir, device):
     # load Diffuser
-    diffuser_pth = os.path.join(model_dir, 'diffuser_checkpoint.pth')
+    diffuser_pth = os.path.join(model_dir, 'diffuser_best.pth')
     diffuser_hyperparameter_pth = os.path.join(model_dir, 'diffuser_hyperparameter.json')
     with open(diffuser_hyperparameter_pth, 'r') as file:
         diffuser_hyperparameter = json.load(file)
