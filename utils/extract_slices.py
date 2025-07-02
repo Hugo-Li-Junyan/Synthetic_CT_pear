@@ -2,6 +2,7 @@ import os
 import nibabel as nib
 import numpy as np
 import imageio
+from tqdm import tqdm
 
 
 def _extract_orthogonal_slices(volume, save_dir, file_name):
@@ -18,7 +19,7 @@ def _extract_orthogonal_slices(volume, save_dir, file_name):
 
 def extract_dataset(in_dir, out_dir, label=''):
     print(f"extracting radial slices for {in_dir}")
-    for f in os.listdir(in_dir):
+    for f in tqdm(os.listdir(in_dir), desc="extracting", unit="sample"):
         img = nib.load(os.path.join(in_dir, f)).get_fdata()
         # Convert to PyTorch tensor
         # Normalize the image if necessary
@@ -33,8 +34,8 @@ if __name__ == '__main__':
     #class2_dir = r"J:\SET-Mebios_CFD-VIS-DI0327\HugoLi\PomestoreID\Pear\for_training\defective"
     #save_real_dir = r"J:\SET-Mebios_CFD-VIS-DI0327\HugoLi\PomestoreID\Pear\for_training\real_slices"
 
-    fake_dir = r"J:\SET-Mebios_CFD-VIS-DI0327\HugoLi\PomestoreID\Pear\for_training\VAE_generation"
-    save_fake_dir = r"J:\SET-Mebios_CFD-VIS-DI0327\HugoLi\PomestoreID\Pear\for_training\fake_slices"
+    fake_dir = r"J:\SET-Mebios_CFD-VIS-DI0327\HugoLi\PomestoreID\Pear\for_training\model\20250626-021325\VAE_generation"
+    save_fake_dir = r"J:\SET-Mebios_CFD-VIS-DI0327\HugoLi\PomestoreID\Pear\for_training\model\20250626-021325\fake_slices"
 
     #extract_dataset(class1_dir, save_real_dir, label='healthy')
     #extract_dataset(class2_dir, save_real_dir, label='defective')
