@@ -18,6 +18,8 @@ def _extract_orthogonal_slices(volume, save_dir, file_name):
 
 
 def extract_dataset(in_dir, out_dir, label=''):
+    if not os.path.exists(out_dir):
+        os.mkdir(out_dir)
     print(f"extracting radial slices for {in_dir}")
     for f in tqdm(os.listdir(in_dir), desc="extracting", unit="sample"):
         img = nib.load(os.path.join(in_dir, f)).get_fdata()
