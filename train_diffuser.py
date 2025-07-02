@@ -18,7 +18,7 @@ def train(dataset, vae, diffuser, model_dir, lr, epochs, batch_size, val_split=0
     diffuser = diffuser.to(device)
 
     optimizer = optim.Adam(diffuser.parameters(), lr=lr)
-    scheduler = lr_scheduler.CosineAnnealingWarmRestarts(optimizer, T_0=10, T_mult=2)
+    scheduler = lr_scheduler.CosineAnnealingWarmRestarts(optimizer, T_0=10)
 
     # load diffuser if exists
     start_epoch = 0
@@ -50,7 +50,7 @@ def train(dataset, vae, diffuser, model_dir, lr, epochs, batch_size, val_split=0
         'batch_size': batch_size,
         'timesteps': diffuser.timesteps,
         'optimizer': 'Adam',
-       # 'learning rate scheduler': 'Cosine annealing warm restarts'
+        'learning rate scheduler': 'Cosine annealing warm restarts'
     }
     hyperparameter_file = os.path.join(model_dir, 'diffuser_hyperparameter.json')
     with open(hyperparameter_file, "w") as f:
