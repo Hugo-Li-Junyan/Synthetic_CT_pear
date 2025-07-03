@@ -41,8 +41,14 @@ def visualize_tsne(z, labels, pca_components=50):
 
     # Plot the 2D representation
     plt.figure(figsize=(8, 6))
-    scatter = plt.scatter(z_2d[:, 0], z_2d[:, 1], alpha=0.7, c=labels)
-    plt.colorbar(scatter, label="Labels")
+    scatter = plt.scatter(z_2d[:, 0], z_2d[:, 1], alpha=0.7, c=labels, cmap='viridis')
+    # Create legend manually
+    label_names = {0: "Healthy", 1: "Defective"}
+    colors = [plt.cm.viridis(i / 1) for i in label_names.keys()]  # Normalized colormap for 0 and 1
+    for label, color in zip(label_names.keys(), colors):
+        plt.scatter([], [], c=[color], alpha=0.7, label=label_names[label])
+
+    plt.legend(title="Labels")
     plt.xlabel("TSNE Component 1")
     plt.ylabel("TSNE Component 2")
     plt.title("t-SNE Visualization of Feature Representations")
@@ -63,8 +69,14 @@ def visualize_umap(z, labels, pca_components=50):
 
     # Plot the 2D representation
     plt.figure(figsize=(8, 6))
-    scatter = plt.scatter(z_2d[:, 0], z_2d[:, 1], alpha=0.7, c=labels)
-    plt.colorbar(scatter, label="Labels")
+    scatter = plt.scatter(z_2d[:, 0], z_2d[:, 1], alpha=0.7, c=labels, cmap='viridis')
+    # Create legend manually
+    label_names = {0: "Healthy", 1: "Defective"}
+    colors = [plt.cm.viridis(i / 1) for i in label_names.keys()]  # Normalized colormap for 0 and 1
+    for label, color in zip(label_names.keys(), colors):
+        plt.scatter([], [], c=[color], alpha=0.7, label=label_names[label])
+
+    plt.legend(title="Labels")
     plt.xlabel("UMAP Component 1")
     plt.ylabel("UMAP Component 2")
     plt.title("UMAP Visualization of Feature Representations")
@@ -104,4 +116,4 @@ if __name__ == "__main__":
     model_dir = r"J:\SET-Mebios_CFD-VIS-DI0327\HugoLi\PomestoreID\Pear\for_training\model\20250626-021325"
     healthy_dir = r"J:\SET-Mebios_CFD-VIS-DI0327\HugoLi\PomestoreID\Pear\for_training\healthy"
     defective_dir = r"J:\SET-Mebios_CFD-VIS-DI0327\HugoLi\PomestoreID\Pear\for_training\defective"
-    main(model_dir, healthy_dir, defective_dir, method='tsne', sample_size=32)
+    main(model_dir, healthy_dir, defective_dir, method='umap', sample_size=32, pca_components=5)
