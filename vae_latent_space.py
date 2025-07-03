@@ -1,3 +1,6 @@
+import os.path
+import nibabel as nib
+import numpy as np
 import warnings
 import torch
 from component import MedicalImageDataset
@@ -87,7 +90,11 @@ def main(model_dir, healthy_dir, defective_dir, method='tsne', sample_size=64, p
         if sample_size != 1:
             warnings.warn('only visualize 1 sample')
         print(f'label is {labels[0]} (0 for healthy, 1 for defective)')
-        plot_volume(z[0, :, :, :, :].squeeze().cpu().numpy())
+        volume = z[0, :, :, :, :].squeeze().cpu().numpy()
+        plot_volume(volume)
+        volume = ((volume - np.min(volume)) / (np.max(volume) - np.min(volume)) * 255).astype(np.uint8)
+        img = nib.Nifti1Image(volume, np.eye(4))
+        nib.save(img, os.path.join(model_dir, 'latent.nii'))
     else:
         raise ValueError('only tsne and umap are supported')
 
