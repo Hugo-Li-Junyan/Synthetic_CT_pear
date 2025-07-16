@@ -6,6 +6,7 @@ import os
 import nibabel as nib
 from utils.load_models import load_vae, load_diffuser
 import json
+import matplotlib.pyplot as plt
 
 
 def linear(w,v0,v1):
@@ -76,7 +77,7 @@ def interpolate_latents(latent_vec1, latent_vec2, interpolation, diffuser, num_s
         return interpolated_latents
 
 
-def main(model_dir, save_dir, healthy_dir, defective_dir, diffusion=True, interpolation:str ='slerp'):
+def main(model_dir, save_dir, healthy_dir, defective_dir, num_steps=11, diffusion=False, interpolation:str ='slerp'):
     device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
     print('Using', 'GPU' if torch.cuda.is_available() else 'CPU')
 
@@ -100,7 +101,7 @@ def main(model_dir, save_dir, healthy_dir, defective_dir, diffusion=True, interp
     img0, z0 = compute_z(healthy_dir, vae, device, with_original=True)
     img1, z1 = compute_z(defective_dir, vae, device, with_original=True)
     # Interpolate between the sampled latent vectors
-    interpolated_latents = interpolate_latents(z0, z1, interpolation, diffuser, num_steps=11)
+    interpolated_latents = interpolate_latents(z0, z1, interpolation, diffuser, num_steps=num_steps)
 
     # Decode interpolated latent vectors
     generated_images = [vae.decode(latent).squeeze().cpu().numpy() for latent in interpolated_latents]
@@ -108,10 +109,12 @@ def main(model_dir, save_dir, healthy_dir, defective_dir, diffusion=True, interp
     generated_images.append(img1)
 
     # Visualize one example (modify for 3D)
-    plot_volume(img0)
-    plot_volume(generated_images[1])
-    plot_volume(img1)
-    plot_volume(generated_images[-2])
+    fig, axes = plt.subplots(nrows=1, ncols=num_steps, figsize=(4*num_steps, 4))
+    for i,ax in enumerate(axes):
+        ax.imshow(generated_images[i][:,64,:].T, cmap='gray', origin='lower')
+        ax.axis('off')
+    plt.tight_layout()
+    plt.show()
 
     for i, arr in enumerate(generated_images):
         arr = ((arr - np.min(arr)) / (np.max(arr) - np.min(arr)) * 255).astype(np.uint8)
@@ -127,4 +130,4 @@ if __name__ == "__main__":
     save_dir = r"J:\SET-Mebios_CFD-VIS-DI0327\HugoLi\PomestoreID\Pear\for_training\VAE_line_interpolation"
 
     # Create dataset instance
-    main(model_dir, save_dir, healthy_pth, defective_pth, interpolation='slerp', diffusion=False)
+    main(model_dir, save_dir, healthy_pth, defective_pth, num_steps=6, interpolation='slerp', diffusion=False)
