@@ -56,14 +56,14 @@ def compute_z(dir, vae, device, with_original=True):
             return z_sampled_0
 
 
-def interpolate_latents(latent_vec1, latent_vec2, interpolation, diffuser, num_steps=11):
+def interpolate_latents(latent_vec1, latent_vec2, interpolation, diffuser, num_steps=10):
     with torch.no_grad():
         interpolated_latents = []
         if diffuser:
             print('Using diffuser')
             latent_vec1 = diffuser.q_sample(latent_vec1, t=diffuser.timesteps - 1)
             latent_vec2 = diffuser.q_sample(latent_vec2, t=diffuser.timesteps - 1)
-        for w in torch.linspace(0, 1, num_steps):
+        for w in torch.linspace(0, 1, num_steps+1):
             if interpolation == 'slerp':
                 z_interpolated = slerp(w, latent_vec1, latent_vec2)
             elif interpolation == 'linear':
@@ -77,7 +77,7 @@ def interpolate_latents(latent_vec1, latent_vec2, interpolation, diffuser, num_s
         return interpolated_latents
 
 
-def main(model_dir, save_dir, healthy_dir, defective_dir, num_steps=11, diffusion=False, interpolation:str ='slerp'):
+def main(model_dir, save_dir, healthy_dir, defective_dir, num_steps=10, diffusion=False, interpolation:str ='slerp'):
     device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
     print('Using', 'GPU' if torch.cuda.is_available() else 'CPU')
 
@@ -105,13 +105,18 @@ def main(model_dir, save_dir, healthy_dir, defective_dir, num_steps=11, diffusio
 
     # Decode interpolated latent vectors
     generated_images = [vae.decode(latent).squeeze().cpu().numpy() for latent in interpolated_latents]
-    generated_images.insert(0, img0)
-    generated_images.append(img1)
+    #generated_images.insert(0, img0)
+    #generated_images.append(img1)
 
     # Visualize one example (modify for 3D)
-    fig, axes = plt.subplots(nrows=1, ncols=num_steps, figsize=(4*num_steps, 4))
-    for i,ax in enumerate(axes):
+    fig, axes = plt.subplots(nrows=2, ncols=num_steps, figsize=(4*num_steps, 8))
+    for i,ax in enumerate(generated_images):
+        ax = axes[0,i]
         ax.imshow(generated_images[i][:,64,:].T, cmap='gray', origin='lower')
+        ax.axis('off')
+
+        ax = axes[1,i]
+        ax.imshow(generated_images[i][64,:,:].T, cmap='gray', origin='lower')
         ax.axis('off')
     plt.tight_layout()
     plt.show()
@@ -130,4 +135,4 @@ if __name__ == "__main__":
     save_dir = r"J:\SET-Mebios_CFD-VIS-DI0327\HugoLi\PomestoreID\Pear\for_training\VAE_line_interpolation"
 
     # Create dataset instance
-    main(model_dir, save_dir, healthy_pth, defective_pth, num_steps=6, interpolation='slerp', diffusion=False)
+    main(model_dir, save_dir, healthy_pth, defective_pth, num_steps=10, interpolation='slerp', diffusion=False)
