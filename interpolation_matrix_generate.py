@@ -5,12 +5,12 @@ import os
 import nibabel as nib
 from component import LatentDiffusion
 import json
-from interpolate_line import interpolate_latents, compute_z
+from interpolation_line import interpolate_latents, compute_z
 from utils.load_models import load_vae, load_diffuser
 
 
 def main(model_dir, save_dir, topleft_dir, lowerleft_dir, lowerright_dir, topright_dir,
-                       diffusion=True, interpolation:str ='slerp'):
+         with_original=False, diffusion=False, interpolation:str ='slerp'):
     device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
     print('Using', 'GPU' if torch.cuda.is_available() else 'CPU')
 
@@ -50,14 +50,15 @@ def main(model_dir, save_dir, topleft_dir, lowerleft_dir, lowerright_dir, toprig
             arr = ((arr - np.min(arr)) / (np.max(arr) - np.min(arr)) * 255).astype(np.uint8)
             img = nib.Nifti1Image(arr, np.eye(4))
             nib.save(img, os.path.join(save_dir, f'{row}_{i}.nii'))
-    nib.save(nib.Nifti1Image(img_topleft, np.eye(4)),os.path.join(save_dir, 'topleft.nii'))
-    nib.save(nib.Nifti1Image(img_lowerleft, np.eye(4)), os.path.join(save_dir, 'lowerleft.nii'))
-    nib.save(nib.Nifti1Image(img_lowerright, np.eye(4)), os.path.join(save_dir, 'lowerright.nii'))
-    nib.save(nib.Nifti1Image(img_topright, np.eye(4)), os.path.join(save_dir, 'topright.nii'))
+    if with_original:
+        nib.save(nib.Nifti1Image(img_topleft, np.eye(4)),os.path.join(save_dir, 'topleft.nii'))
+        nib.save(nib.Nifti1Image(img_lowerleft, np.eye(4)), os.path.join(save_dir, 'lowerleft.nii'))
+        nib.save(nib.Nifti1Image(img_lowerright, np.eye(4)), os.path.join(save_dir, 'lowerright.nii'))
+        nib.save(nib.Nifti1Image(img_topright, np.eye(4)), os.path.join(save_dir, 'topright.nii'))
 
 if __name__ == "__main__":
     # load vae model
-    model_dir = r"J:\SET-Mebios_CFD-VIS-DI0327\HugoLi\PomestoreID\Pear\for_training\model\20250614-104844"
+    model_dir = r"J:\SET-Mebios_CFD-VIS-DI0327\HugoLi\PomestoreID\Pear\for_training\model\20250626-021325"
     topleft_dir = r"J:\SET-Mebios_CFD-VIS-DI0327\HugoLi\PomestoreID\Pear\for_training\healthy\A34.nii"
     lowerleft_dir = r"J:\SET-Mebios_CFD-VIS-DI0327\HugoLi\PomestoreID\Pear\for_training\defective\A08.nii"
     lowerright_dir = r"J:\SET-Mebios_CFD-VIS-DI0327\HugoLi\PomestoreID\Pear\for_training\healthy\D46.nii"
@@ -65,4 +66,4 @@ if __name__ == "__main__":
     save_dir = r"J:\SET-Mebios_CFD-VIS-DI0327\HugoLi\PomestoreID\Pear\for_training\VAE_matrix_interpolation"
 
     # Create dataset instance
-    main(model_dir, save_dir, topleft_dir, lowerleft_dir, lowerright_dir, topright_dir, interpolation='slerp', diffusion=False)
+    main(model_dir, save_dir, topleft_dir, lowerleft_dir, lowerright_dir, topright_dir, interpolation='slerp', with_original=False, diffusion=False)
