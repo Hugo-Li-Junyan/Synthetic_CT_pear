@@ -56,7 +56,7 @@ def compute_z(dir, vae, device, with_original=True):
             return z_sampled_0
 
 
-def interpolate_latents(latent_vec1, latent_vec2, interpolation, diffuser, num_steps=10):
+def interpolate_latents(latent_vec1, latent_vec2, interpolation, diffuser, num_steps):
     with torch.no_grad():
         interpolated_latents = []
         if diffuser:

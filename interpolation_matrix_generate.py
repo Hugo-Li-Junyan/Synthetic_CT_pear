@@ -37,13 +37,13 @@ def main(model_dir, save_dir, topleft_dir, lowerleft_dir, lowerright_dir, toprig
     img_topright, z_topright = compute_z(topright_dir, vae, device, with_original=True)
 
     # Interpolate between the sampled latent vectors
-    left_interpolated_latents = interpolate_latents(z_topleft, z_lowerleft, interpolation, diffuser, num_steps=11)
-    right_interpolated_latents = interpolate_latents(z_topright, z_lowerright, interpolation, diffuser, num_steps=11)
+    left_interpolated_latents = interpolate_latents(z_topleft, z_lowerleft, interpolation, diffuser, num_steps=5)
+    right_interpolated_latents = interpolate_latents(z_topright, z_lowerright, interpolation, diffuser, num_steps=5)
     # Decode interpolated latent vectors
     for row in range(len(left_interpolated_latents)):
         left_z = left_interpolated_latents[row]
         right_z = right_interpolated_latents[row]
-        row_interpolated = interpolate_latents(left_z, right_z, interpolation, diffuser, num_steps=11)
+        row_interpolated = interpolate_latents(left_z, right_z, interpolation, diffuser, num_steps=5)
         row_generated_images = [vae.decode(latent).squeeze().cpu().numpy() for latent in row_interpolated]
 
         for i, arr in enumerate(row_generated_images):
