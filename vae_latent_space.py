@@ -98,14 +98,19 @@ def main(model_dir, healthy_dir, defective_dir, method='tsne', sample_size=64, p
         for param in diffuser.parameters():
             param.requires_grad = False
         z = torch.randn(1, 1, 32, 32, 32, device=device, requires_grad=False)  # Sample from latent space
-        z_arr = diffuser.denoise(z, steps=100, save_steps=20)
+        z_arr = diffuser.denoise(z, steps=200, save_steps=20)
+        fig, axes = plt.subplots(nrows=1, ncols=10, figsize=(40, 4))
         for step, z_denoised in enumerate(z_arr):
             volume = z_denoised[0, :, :, :, :].squeeze().cpu().numpy()
+            ax = axes[0, step]
+            ax.imshow(z_denoised[:, 64, :].T, cmap='gray', origin='lower')
+            ax.axis('off')
             #plot_volume(volume)
             volume = ((volume - np.min(volume)) / (np.max(volume) - np.min(volume)) * 255).astype(np.uint8)
             img = nib.Nifti1Image(volume, np.eye(4))
             nib.save(img, os.path.join(model_dir, f'{step}.nii'))
-
+        plt.tight_layout()
+        plt.show()
     else:
         z, labels = vae_latent(vae, dataset, sample_size, device)
         if method == 'tsne':
@@ -130,4 +135,4 @@ if __name__ == "__main__":
     model_dir = r"J:\SET-Mebios_CFD-VIS-DI0327\HugoLi\PomestoreID\Pear\for_training\model\20250626-021325"
     healthy_dir = r"J:\SET-Mebios_CFD-VIS-DI0327\HugoLi\PomestoreID\Pear\for_training\healthy"
     defective_dir = r"J:\SET-Mebios_CFD-VIS-DI0327\HugoLi\PomestoreID\Pear\for_training\defective"
-    main(model_dir, healthy_dir, defective_dir, method='volume', sample_size=1, pca_components=5)
+    main(model_dir, healthy_dir, defective_dir, method='diffusion')
