@@ -103,7 +103,7 @@ def main(model_dir, healthy_dir, defective_dir, method='tsne', sample_size=64, p
         for step, z_denoised in enumerate(z_arr):
             volume = z_denoised[0, :, :, :, :].squeeze().cpu().numpy()
             ax = axes[step]
-            ax.imshow(z_denoised[:, 64, :].T, cmap='gray', origin='lower')
+            ax.imshow(volume[:, 64, :].T, cmap='gray', origin='lower')
             ax.axis('off')
             #plot_volume(volume)
             volume = ((volume - np.min(volume)) / (np.max(volume) - np.min(volume)) * 255).astype(np.uint8)
