@@ -27,7 +27,7 @@ def show_random_images_grid(folder_path, n_rows, n_cols):
     for row in range(n_rows):
         for col in range(n_rows):
             ax = fig.add_subplot(gs[row, col])
-            img_path = os.path.join(folder_path, all_images[i])
+            img_path = os.path.join(folder_path, selected_images[i])
             img = Image.open(img_path)
             ax.imshow(np.array(img).T, cmap='gray', origin='lower')
             ax.axis('off')
