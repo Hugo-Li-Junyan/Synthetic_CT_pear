@@ -11,3 +11,4 @@ torchio
 umap-learn
 pytorch-fid
 imageio
+seaborn
