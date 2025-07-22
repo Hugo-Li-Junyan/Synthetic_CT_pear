@@ -102,7 +102,7 @@ def main(model_dir, healthy_dir, defective_dir, method='tsne', sample_size=64, p
         fig, axes = plt.subplots(nrows=1, ncols=10, figsize=(40, 4))
         for step, z_denoised in enumerate(z_arr):
             volume = z_denoised[0, :, :, :, :].squeeze().cpu().numpy()
-            ax = axes[0, step]
+            ax = axes[step]
             ax.imshow(z_denoised[:, 64, :].T, cmap='gray', origin='lower')
             ax.axis('off')
             #plot_volume(volume)
