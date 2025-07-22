@@ -92,7 +92,7 @@ def main(model_dir, healthy_dir, defective_dir, method='tsne', sample_size=64, p
     for param in vae.parameters():
         param.requires_grad = False
     vae.eval()
-    if method == 'dissusion':
+    if method == 'diffusion':
         diffuser = load_diffuser(model_dir, device)
         diffuser.eval()
         for param in diffuser.parameters():
