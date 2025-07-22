@@ -10,7 +10,7 @@ from sklearn.manifold import TSNE
 import umap
 from sklearn.decomposition import PCA
 from utils.visualization import plot_volume
-from utils.load_models import load_vae
+from utils.load_models import load_vae, load_diffuser
 
 
 def vae_latent(vae, dataset, sample_size, device):
@@ -92,23 +92,37 @@ def main(model_dir, healthy_dir, defective_dir, method='tsne', sample_size=64, p
     for param in vae.parameters():
         param.requires_grad = False
     vae.eval()
+    if method == 'dissusion':
+        diffuser = load_diffuser(model_dir, device)
+        diffuser.eval()
+        for param in diffuser.parameters():
+            param.requires_grad = False
+        z = torch.randn(1, 1, 32, 32, 32, device=device, requires_grad=False)  # Sample from latent space
+        z_arr = diffuser.denoise(z, steps=100, save_steps=20)
+        for step, z_denoised in enumerate(z_arr):
+            volume = z_denoised[0, :, :, :, :].squeeze().cpu().numpy()
+            #plot_volume(volume)
+            volume = ((volume - np.min(volume)) / (np.max(volume) - np.min(volume)) * 255).astype(np.uint8)
+            img = nib.Nifti1Image(volume, np.eye(4))
+            nib.save(img, os.path.join(model_dir, f'{step}.nii'))
 
-    z, labels = vae_latent(vae, dataset, sample_size, device)
-    if method == 'tsne':
-        visualize_tsne(z, labels, pca_components=pca_components)
-    elif method == 'umap':
-        visualize_umap(z, labels, pca_components=pca_components)
-    elif method == 'volume':
-        if sample_size != 1:
-            warnings.warn('only visualize 1 sample')
-        print(f'label is {labels[0]} (0 for healthy, 1 for defective)')
-        volume = z[0, :, :, :, :].squeeze().cpu().numpy()
-        plot_volume(volume)
-        volume = ((volume - np.min(volume)) / (np.max(volume) - np.min(volume)) * 255).astype(np.uint8)
-        img = nib.Nifti1Image(volume, np.eye(4))
-        nib.save(img, os.path.join(model_dir, 'latent.nii'))
     else:
-        raise ValueError('only tsne and umap are supported')
+        z, labels = vae_latent(vae, dataset, sample_size, device)
+        if method == 'tsne':
+            visualize_tsne(z, labels, pca_components=pca_components)
+        elif method == 'umap':
+            visualize_umap(z, labels, pca_components=pca_components)
+        elif method == 'volume':
+            if sample_size != 1:
+                warnings.warn('only visualize 1 sample')
+            print(f'label is {labels[0]} (0 for healthy, 1 for defective)')
+            volume = z[0, :, :, :, :].squeeze().cpu().numpy()
+            plot_volume(volume)
+            volume = ((volume - np.min(volume)) / (np.max(volume) - np.min(volume)) * 255).astype(np.uint8)
+            img = nib.Nifti1Image(volume, np.eye(4))
+            nib.save(img, os.path.join(model_dir, 'latent.nii'))
+        else:
+            raise ValueError('only tsne and umap are supported')
 
 
 if __name__ == "__main__":
@@ -116,4 +130,4 @@ if __name__ == "__main__":
     model_dir = r"J:\SET-Mebios_CFD-VIS-DI0327\HugoLi\PomestoreID\Pear\for_training\model\20250626-021325"
     healthy_dir = r"J:\SET-Mebios_CFD-VIS-DI0327\HugoLi\PomestoreID\Pear\for_training\healthy"
     defective_dir = r"J:\SET-Mebios_CFD-VIS-DI0327\HugoLi\PomestoreID\Pear\for_training\defective"
-    main(model_dir, healthy_dir, defective_dir, method='umap', sample_size=32, pca_components=5)
+    main(model_dir, healthy_dir, defective_dir, method='volume', sample_size=1, pca_components=5)

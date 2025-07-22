@@ -34,13 +34,13 @@ class LatentDiffusion(nn.Module):
         predicted_noise = self.denoise_fn(x_input)
         return F.mse_loss(predicted_noise, noise)
 
-    def denoise(self, z_noisy, steps=50):
+    def denoise(self, z_noisy, steps=50, save_steps:int=None):
         device = z_noisy.device
 
         # Get timestep schedule
         total_steps = self.timesteps
         step_indices = torch.linspace(0, total_steps - 1, steps, dtype=torch.long, device=device)
-
+        steps_z = []
         for i in reversed(range(steps)):
             t = step_indices[i]
             t_int = t.long()
@@ -59,8 +59,13 @@ class LatentDiffusion(nn.Module):
             pred_z0 = (z_noisy - sqrt_one_minus_alpha_t * pred_noise) / sqrt_alpha_t
             dir_xt = (1 - alpha_prev).sqrt() * pred_noise
             z_noisy = alpha_prev.sqrt() * pred_z0 + dir_xt
-
-        return z_noisy
+            if save_steps:
+                if (i+1)%save_steps == 0:
+                    steps_z.append(z_noisy)
+        if save_steps:
+            return steps_z
+        else:
+            return z_noisy
 
     @staticmethod
     def _smart_multiply(a, b):
