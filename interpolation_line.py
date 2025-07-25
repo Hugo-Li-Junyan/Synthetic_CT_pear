@@ -102,8 +102,10 @@ def main(model_dir, save_dir, healthy_dir, defective_dir, num_steps=10, show_lat
     img1, z1 = compute_z(defective_dir, vae, device, with_original=True)
     # Interpolate between the sampled latent vectors
     interpolated_latents = interpolate_latents(z0, z1, interpolation, diffuser, num_steps=num_steps)
+    mid_slice = 64
     if show_latent:
         generated_images = [latent.squeeze().cpu().numpy() for latent in interpolated_latents]
+        mid_slice = 16
     else:
     # Decode interpolated latent vectors
         generated_images = [vae.decode(latent).squeeze().cpu().numpy() for latent in interpolated_latents]
@@ -114,11 +116,11 @@ def main(model_dir, save_dir, healthy_dir, defective_dir, num_steps=10, show_lat
     fig, axes = plt.subplots(nrows=2, ncols=num_steps, figsize=(4*num_steps, 8))
     for i,ax in enumerate(generated_images):
         ax = axes[0,i]
-        ax.imshow(generated_images[i][:,64,:].T, cmap='gray', origin='lower')
+        ax.imshow(generated_images[i][:,mid_slice,:].T, cmap='gray', origin='lower')
         ax.axis('off')
 
         ax = axes[1,i]
-        ax.imshow(generated_images[i][64,:,:].T, cmap='gray', origin='lower')
+        ax.imshow(generated_images[i][mid_slice,:,:].T, cmap='gray', origin='lower')
         ax.axis('off')
     plt.tight_layout()
     plt.show()
