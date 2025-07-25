@@ -63,7 +63,7 @@ def interpolate_latents(latent_vec1, latent_vec2, interpolation, diffuser, num_s
             print('Using diffuser')
             latent_vec1 = diffuser.q_sample(latent_vec1, t=diffuser.timesteps - 1)
             latent_vec2 = diffuser.q_sample(latent_vec2, t=diffuser.timesteps - 1)
-        for w in torch.linspace(0, 1, num_steps+1):
+        for w in torch.linspace(0, 1, num_steps):
             if interpolation == 'slerp':
                 z_interpolated = slerp(w, latent_vec1, latent_vec2)
             elif interpolation == 'linear':
