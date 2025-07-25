@@ -139,4 +139,4 @@ if __name__ == "__main__":
     save_dir = r"J:\SET-Mebios_CFD-VIS-DI0327\HugoLi\PomestoreID\Pear\for_training\VAE_line_interpolation"
 
     # Create dataset instance
-    main(model_dir, save_dir, healthy_pth, defective_pth, num_steps=10, show_latent=True, interpolation='slerp', diffusion=False)
+    main(model_dir, save_dir, healthy_pth, defective_pth, num_steps=11, show_latent=True, interpolation='slerp', diffusion=False)
