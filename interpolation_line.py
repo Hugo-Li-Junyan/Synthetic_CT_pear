@@ -77,7 +77,7 @@ def interpolate_latents(latent_vec1, latent_vec2, interpolation, diffuser, num_s
         return interpolated_latents
 
 
-def main(model_dir, save_dir, healthy_dir, defective_dir, num_steps=10, diffusion=False, interpolation:str ='slerp'):
+def main(model_dir, save_dir, healthy_dir, defective_dir, num_steps=10, show_latent=False, diffusion=False, interpolation:str ='slerp'):
     device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
     print('Using', 'GPU' if torch.cuda.is_available() else 'CPU')
 
@@ -102,9 +102,11 @@ def main(model_dir, save_dir, healthy_dir, defective_dir, num_steps=10, diffusio
     img1, z1 = compute_z(defective_dir, vae, device, with_original=True)
     # Interpolate between the sampled latent vectors
     interpolated_latents = interpolate_latents(z0, z1, interpolation, diffuser, num_steps=num_steps)
-
+    if show_latent:
+        generated_images = [latent.squeeze().cpu().numpy() for latent in interpolated_latents]
+    else:
     # Decode interpolated latent vectors
-    generated_images = [vae.decode(latent).squeeze().cpu().numpy() for latent in interpolated_latents]
+        generated_images = [vae.decode(latent).squeeze().cpu().numpy() for latent in interpolated_latents]
     #generated_images.insert(0, img0)
     #generated_images.append(img1)
 
@@ -135,4 +137,4 @@ if __name__ == "__main__":
     save_dir = r"J:\SET-Mebios_CFD-VIS-DI0327\HugoLi\PomestoreID\Pear\for_training\VAE_line_interpolation"
 
     # Create dataset instance
-    main(model_dir, save_dir, healthy_pth, defective_pth, num_steps=10, interpolation='slerp', diffusion=False)
+    main(model_dir, save_dir, healthy_pth, defective_pth, num_steps=10, show_latent=True, interpolation='slerp', diffusion=False)
