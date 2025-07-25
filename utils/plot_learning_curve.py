@@ -11,8 +11,6 @@ def plot_vae_log(csv_path, columns):
         csv_path (str): Path to the CSV file.
         columns (list of str): List of exactly four column names to plot.
     """
-    if len(columns) != 4:
-        raise ValueError("Please provide exactly four column names to plot.")
 
     # Load the CSV file
     df = pd.read_csv(csv_path)
@@ -27,9 +25,11 @@ def plot_vae_log(csv_path, columns):
 
     plt.figure(figsize=(12, 6))
     # Plot each column
-    for col in columns:
-        sns.lineplot(data=df, x=df.index, y=col, label=col)
+    labels = ['Generator', 'Discriminator']
+    for i, col in enumerate(columns):
+        sns.lineplot(data=df, x=df.index, y=col, label=labels[i])
 
+    plt.ylim(-0.3, 0.5)
     plt.xlabel('Epoch')
     plt.ylabel('Loss')
     plt.legend()
@@ -37,4 +37,4 @@ def plot_vae_log(csv_path, columns):
     plt.show()
 
 if __name__ == '__main__':
-    plot_vae_log(r'J:\SET-Mebios_CFD-VIS-DI0327\HugoLi\PomestoreID\Pear\for_training\model\20250626-021325\vae_log.csv', ['Adversarial_train', 'Discriminator_train', 'Adversarial_test', 'Discrminator_test'])
+    plot_vae_log(r'J:\SET-Mebios_CFD-VIS-DI0327\HugoLi\PomestoreID\Pear\for_training\model\20250626-021325\vae_log.csv', ['Adversarial_train', 'Discriminator_train'])
