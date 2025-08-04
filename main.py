@@ -34,7 +34,7 @@ def vae_generate(model_dir, save_dir, batch_size:int=2, batches:int=16):
             arr = vae.decode(z).squeeze().cpu().numpy()
             for i in range(batch_size):
                 img = arr[i, :, :, :]
-                img = ((img - np.min(img)) / (np.max(img) - np.min(img)) * 255).astype(np.uint16)
+                img = ((img - np.min(img)) / (np.max(img) - np.min(img)) * 255).astype(np.uint8)
                 img = nib.Nifti1Image(img, np.eye(4))
                 nib.save(img, os.path.join(save_dir, f'{count}.nii'))
                 count += 1
