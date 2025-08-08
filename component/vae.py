@@ -50,7 +50,7 @@ class Encoder(nn.Module):
 
         # first block from 1 channel to 32 channels
         first_block = [
-            nn.Conv3d(1, base_channel, kernel_size=3, stride=2, padding=1),
+            nn.Conv3d(1, base_channel, kernel_size=3, stride=1, padding=1),
             nn.LeakyReLU(0.2, inplace=True)
         ]
         feature_layers += first_block
@@ -202,9 +202,9 @@ class VAE(nn.Module):
 if __name__ == '__main__':
     # Create dataset instance
     x = torch.randn((1,1,128,128,128))
-    vae = VAE(input_shape=(1,128,128,128), featuremap_size=32, base_channel=256, flatten_latent_dim=None, with_residual=True)
+    vae = VAE(input_shape=(1,128,128,128), featuremap_size=32, base_channel=128, flatten_latent_dim=None, with_residual=True)
 
-
+    y = vae(x)
     def count_parameters(model):
         return sum(p.numel() for p in model.parameters() if p.requires_grad)
 
