@@ -19,7 +19,7 @@ source /data/leuven/362/vsc36240/miniconda3_wice/etc/profile.d/conda.sh
 conda activate base
 cd /data/leuven/362/vsc36240/project/synthetic_data/Synthetic_CT_pear
 # Run your script with parameters
-python ./train_vae.py --class1_dir ../healthy --class2_dir ../defective --save_dir ../model  --random_state 369
+python ./train_vae.py --class1_dir ../healthy --class2_dir ../defective --save_dir ../model --base_channel 128  --random_state 369
 
 # Optional: deactivate conda env (not necessary, but clean)
 conda deactivate
