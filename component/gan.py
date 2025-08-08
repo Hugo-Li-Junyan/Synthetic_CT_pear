@@ -3,7 +3,7 @@ import math
 import torch.nn.functional as F
 import torch
 from torch.nn.utils import spectral_norm
-from .vae import ResidualBlock3D
+from vae import ResidualBlock3D
 
 
 class PatchGAN(nn.Module):
@@ -156,7 +156,7 @@ if __name__ == '__main__':
     # Create dataset instance
     x = torch.randn((1,1,128,128,128))
     gan = PatchGAN(x_shape=(1,128,128,128), patch_size=16, base_channel=16, with_residual=True, weight_fn='max')
-
+    y = gan(x)
 
     def count_parameters(model):
         return sum(p.numel() for p in model.parameters() if p.requires_grad)
