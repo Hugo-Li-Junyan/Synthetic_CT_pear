@@ -46,7 +46,7 @@ class Encoder(nn.Module):
         feature_layers = []
         # decide how many feature_layers to include
         down_factor = input_shape[1] / featuremap_size
-        num_blocks = int(math.log2(down_factor))-1
+        num_blocks = int(math.log2(down_factor))
 
         # first block from 1 channel to 32 channels
         first_block = [
@@ -114,7 +114,7 @@ class Decoder(nn.Module):
         feature_layers = []
         up_factor = output_shape[1] / featuremap_size
         num_blocks = int(math.log2(up_factor))
-        first_channel = base_channel * 2**(num_blocks-1)
+        first_channel = base_channel * 2**num_blocks
         if flatten_latent_dim:
             self.latent_to_feature = nn.Sequential(
                 nn.Linear(flatten_latent_dim, first_channel * featuremap_size**3),
@@ -124,11 +124,11 @@ class Decoder(nn.Module):
             self.latent_to_feature = nn.Conv3d(1, first_channel, kernel_size=3, stride=1,padding=1)
 
         for i in range(num_blocks)[::-1]:
-            block = self._construct_blocks(base_channel * 2**i, int(base_channel * 2**(i-1)), with_residual)
+            block = self._construct_blocks(base_channel * 2**(i+1), int(base_channel * 2**i), with_residual)
             feature_layers += block
 
         self.reconstruction_layer = nn.Sequential(
-            nn.Conv3d(int(base_channel/2), 1, kernel_size=3, stride=1, padding=1),
+            nn.Conv3d(base_channel, 1, kernel_size=3, stride=1, padding=1),
             nn.Sigmoid()
         )
         self.feature_layers = nn.Sequential(*feature_layers)
