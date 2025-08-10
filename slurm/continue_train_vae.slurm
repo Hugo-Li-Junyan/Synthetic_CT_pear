@@ -17,9 +17,9 @@
 # Activate your environment
 source /data/leuven/362/vsc36240/miniconda3_wice/etc/profile.d/conda.sh
 conda activate base
-cd /data/leuven/362/vsc36240/project/synthetic_data
+cd /data/leuven/362/vsc36240/project/synthetic_data/Synthetic_CT_pear
 # Run your script with parameters
-python ./python_spectral/generation/train_vae.py --class1_dir ./healthy --class2_dir ./defective --save_dir ./model --random_state 8964 --batch_size 3 --vae_base_channel 256 --gan_base_channel 64 --load_model_id 20250614-205322 --epochs 800
+python ./train_vae.py --class1_dir ../healthy --class2_dir ../defective --save_dir ../model --load_model_id 20250808-141953 --vae_base_channel 128
 
 # Optional: deactivate conda env (not necessary, but clean)
 conda deactivate
