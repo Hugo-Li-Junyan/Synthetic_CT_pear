@@ -3,7 +3,7 @@ import math
 import torch.nn.functional as F
 import torch
 from torch.nn.utils import spectral_norm
-from vae import ResidualBlock3D
+from .vae import ResidualBlock3D
 
 
 class PatchGAN(nn.Module):
