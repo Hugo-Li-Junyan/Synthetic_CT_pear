@@ -36,7 +36,7 @@ def show_random_images_grid(folder_path, n_rows, n_cols):
     plt.subplots_adjust(wspace=0, hspace=0)
     plt.margins(0)
     plt.tight_layout()
-    plt.savefig("output.png", bbox_inches='tight', pad_inches=0)
+    plt.savefig("random_generation.png", bbox_inches='tight', pad_inches=0)
 
 
 if __name__ == '__main__':
