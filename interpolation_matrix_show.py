@@ -20,7 +20,7 @@ def main(save_dir):
             ax.axis('off')
     plt.subplots_adjust(wspace=0, hspace=0)
     plt.margins(0)
-    plt.savefig("output.png", bbox_inches='tight', pad_inches=0)
+    plt.savefig("interpolation_matrix.png", bbox_inches='tight', pad_inches=0)
 
 if __name__ == "__main__":
     save_dir = r"J:\SET-Mebios_CFD-VIS-DI0327\HugoLi\PomestoreID\Pear\for_training\VAE_matrix_interpolation"

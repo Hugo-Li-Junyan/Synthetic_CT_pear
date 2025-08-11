@@ -69,7 +69,7 @@ def main(model_dir, healthy_dir, defective_dir, max_size=6, val_split=0.1):
                 fig.colorbar(im, cax=cbar_ax, orientation='horizontal')
 
                 plt.tight_layout(rect=[0, 0.1, 1, 1])  # Leave space for colorbar
-                plt.show()
+                plt.savefig("difference_map.png", bbox_inches='tight', pad_inches=0)
                 break
 
 
