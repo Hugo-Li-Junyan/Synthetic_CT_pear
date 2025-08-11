@@ -113,13 +113,17 @@ def main(model_dir, save_dir, healthy_dir, defective_dir, num_steps=10, show_lat
     #generated_images.append(img1)
 
     # Visualize one example (modify for 3D)
-    fig, axes = plt.subplots(nrows=2, ncols=num_steps, figsize=(4*num_steps, 8))
+    fig, axes = plt.subplots(nrows=3, ncols=num_steps, figsize=(4*num_steps, 12))
     for i,ax in enumerate(generated_images):
-        ax = axes[0,i]
-        ax.imshow(generated_images[i][:,mid_slice,:].T, cmap='gray', origin='lower')
+        ax = axes[0, i]
+        ax.imshow(generated_images[i][:, :, mid_slice].T, cmap='gray', origin='lower')
         ax.axis('off')
 
         ax = axes[1,i]
+        ax.imshow(generated_images[i][:,mid_slice,:].T, cmap='gray', origin='lower')
+        ax.axis('off')
+
+        ax = axes[2,i]
         ax.imshow(generated_images[i][mid_slice,:,:].T, cmap='gray', origin='lower')
         ax.axis('off')
     plt.tight_layout()
@@ -139,4 +143,4 @@ if __name__ == "__main__":
     save_dir = r"J:\SET-Mebios_CFD-VIS-DI0327\HugoLi\PomestoreID\Pear\for_training\VAE_line_interpolation"
 
     # Create dataset instance
-    main(model_dir, save_dir, healthy_pth, defective_pth, num_steps=11, show_latent=True, interpolation='slerp', diffusion=False)
+    main(model_dir, save_dir, healthy_pth, defective_pth, num_steps=11, show_latent=False, interpolation='slerp', diffusion=False)
