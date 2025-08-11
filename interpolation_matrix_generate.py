@@ -37,13 +37,13 @@ def main(model_dir, save_dir, topleft_dir, lowerleft_dir, lowerright_dir, toprig
     img_topright, z_topright = compute_z(topright_dir, vae, device, with_original=True)
 
     # Interpolate between the sampled latent vectors
-    left_interpolated_latents = interpolate_latents(z_topleft, z_lowerleft, interpolation, diffuser, num_steps=5)
-    right_interpolated_latents = interpolate_latents(z_topright, z_lowerright, interpolation, diffuser, num_steps=5)
+    left_interpolated_latents = interpolate_latents(z_topleft, z_lowerleft, interpolation, diffuser, num_steps=6)
+    right_interpolated_latents = interpolate_latents(z_topright, z_lowerright, interpolation, diffuser, num_steps=6)
     # Decode interpolated latent vectors
     for row in range(len(left_interpolated_latents)):
         left_z = left_interpolated_latents[row]
         right_z = right_interpolated_latents[row]
-        row_interpolated = interpolate_latents(left_z, right_z, interpolation, diffuser, num_steps=5)
+        row_interpolated = interpolate_latents(left_z, right_z, interpolation, diffuser, num_steps=6)
         row_generated_images = [vae.decode(latent).squeeze().cpu().numpy() for latent in row_interpolated]
 
         for i, arr in enumerate(row_generated_images):
@@ -58,7 +58,7 @@ def main(model_dir, save_dir, topleft_dir, lowerleft_dir, lowerright_dir, toprig
 
 if __name__ == "__main__":
     # load vae model
-    model_dir = r"J:\SET-Mebios_CFD-VIS-DI0327\HugoLi\PomestoreID\Pear\for_training\model\20250626-021325"
+    model_dir = r"J:\SET-Mebios_CFD-VIS-DI0327\HugoLi\PomestoreID\Pear\for_training\model\20250808-141953"
     topleft_dir = r"J:\SET-Mebios_CFD-VIS-DI0327\HugoLi\PomestoreID\Pear\for_training\healthy\A34.nii"
     lowerleft_dir = r"J:\SET-Mebios_CFD-VIS-DI0327\HugoLi\PomestoreID\Pear\for_training\defective\A08.nii"
     lowerright_dir = r"J:\SET-Mebios_CFD-VIS-DI0327\HugoLi\PomestoreID\Pear\for_training\defective\H30.nii"
