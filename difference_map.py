@@ -18,7 +18,7 @@ def main(model_dir, healthy_dir, defective_dir, max_size=6, val_split=0.1):
     dataset = MedicalImageDataset(healthy_dir, defective_dir)
     generator = torch.Generator().manual_seed(random_state)
     _, val_dataset = random_split(dataset, [1 - val_split, val_split], generator=generator)
-    val_loader = DataLoader(val_dataset, batch_size=1, shuffle=False)
+    val_loader = DataLoader(val_dataset, batch_size=1, shuffle=True)
 
     fig, axes = plt.subplots(nrows=max_size, ncols=6, figsize=(12, 15))
     num_healthy=0
@@ -74,7 +74,7 @@ def main(model_dir, healthy_dir, defective_dir, max_size=6, val_split=0.1):
 
 
 if __name__ == "__main__":
-    model_dir = r"J:\SET-Mebios_CFD-VIS-DI0327\HugoLi\PomestoreID\Pear\for_training\model\20250626-021325"
+    model_dir = r"J:\SET-Mebios_CFD-VIS-DI0327\HugoLi\PomestoreID\Pear\for_training\model\20250808-141953"
     healthy_dir = r"J:\SET-Mebios_CFD-VIS-DI0327\HugoLi\PomestoreID\Pear\for_training\healthy"
     defective_dir = r"J:\SET-Mebios_CFD-VIS-DI0327\HugoLi\PomestoreID\Pear\for_training\defective"
 
