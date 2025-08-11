@@ -202,7 +202,7 @@ class VAE(nn.Module):
 if __name__ == '__main__':
     # Create dataset instance
     x = torch.randn((1,1,128,128,128))
-    vae = VAE(input_shape=(1,128,128,128), featuremap_size=32, base_channel=128, flatten_latent_dim=None, with_residual=True)
+    vae = VAE(input_shape=(1,128,128,128), featuremap_size=32, base_channel=256, flatten_latent_dim=None, with_residual=True)
 
     y = vae(x)
     def count_parameters(model):
