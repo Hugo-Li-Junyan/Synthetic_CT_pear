@@ -40,29 +40,31 @@ def main(model_dir, healthy_dir, defective_dir, max_size=6, val_split=0.1):
             img_0 = x_0.squeeze().cpu().numpy()
             img_1 = x_1.squeeze().cpu().numpy()
 
-            ax = axes[idx-1, 0]
-            ax.imshow(img_1[:,64,:].T, cmap='gray', origin='lower')
-            ax.axis('off')
-
-            ax = axes[idx - 1, 1]
-            ax.imshow(img_1[:,64,:].T-img_0[:,64,:].T,cmap='Spectral_r', vmin=-1, vmax=1, origin='lower')
-            ax.axis('off')
-
-            ax = axes[idx - 1, 2]
-            ax.imshow(img_1[64,:, :].T, cmap='gray', origin='lower')
-            ax.axis('off')
-
-            ax = axes[idx - 1, 3]
-            ax.imshow(img_1[64,:, :].T - img_0[64,:, :].T,cmap='Spectral_r', vmin=-1, vmax=1, origin='lower')
-            ax.axis('off')
-
-            ax = axes[idx - 1, 4]
+            ax = axes[idx - 1, 0]
             ax.imshow(img_1[:, :, 64].T, cmap='gray', origin='lower')
             ax.axis('off')
 
-            ax = axes[idx - 1, 5]
+            ax = axes[idx - 1, 1]
             im = ax.imshow(img_1[:, :, 64].T - img_0[:, :, 64].T, cmap='Spectral_r', vmin=-1, vmax=1, origin='lower')
             ax.axis('off')
+
+            ax = axes[idx-1, 2]
+            ax.imshow(img_1[:,64,:].T, cmap='gray', origin='lower')
+            ax.axis('off')
+
+            ax = axes[idx - 1, 3]
+            ax.imshow(img_1[:,64,:].T-img_0[:,64,:].T,cmap='Spectral_r', vmin=-1, vmax=1, origin='lower')
+            ax.axis('off')
+
+            ax = axes[idx - 1, 4]
+            ax.imshow(img_1[64,:, :].T, cmap='gray', origin='lower')
+            ax.axis('off')
+
+            ax = axes[idx - 1, 5]
+            ax.imshow(img_1[64,:, :].T - img_0[64,:, :].T,cmap='Spectral_r', vmin=-1, vmax=1, origin='lower')
+            ax.axis('off')
+
+
 
             if idx >= max_size:
                 cbar_ax = fig.add_axes([0.1, 0.05, 0.8, 0.03])  # [left, bottom, width, height]
