@@ -18,7 +18,7 @@ def train(dataset, vae, diffuser, model_dir, lr, epochs, batch_size, val_split=0
     diffuser = diffuser.to(device)
 
     optimizer = optim.Adam(diffuser.parameters(), lr=lr)
-    scheduler = lr_scheduler.CosineAnnealingWarmRestarts(optimizer, T_0=10)
+    scheduler = lr_scheduler.CosineAnnealingWarmRestarts(optimizer, T_0=10, T_mult=2)
 
     # load diffuser if exists
     start_epoch = 0
