@@ -127,7 +127,7 @@ def main(model_dir, save_dir, healthy_dir, defective_dir, num_steps=10, show_lat
         ax.imshow(generated_images[i][mid_slice,:,:].T, cmap='gray', origin='lower')
         ax.axis('off')
     plt.tight_layout()
-    plt.show()
+    plt.savefig("interpolation_line.png", bbox_inches='tight', pad_inches=0)
 
     for i, arr in enumerate(generated_images):
         arr = ((arr - np.min(arr)) / (np.max(arr) - np.min(arr)) * 255).astype(np.uint8)
