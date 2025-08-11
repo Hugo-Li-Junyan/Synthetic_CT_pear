@@ -9,11 +9,9 @@ from torch.utils.data import DataLoader, random_split
 
 
 def main(model_dir, healthy_dir, defective_dir, max_size=6, val_split=0.1):
-    device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
-    print('Using', 'GPU' if torch.cuda.is_available() else 'CPU')
 
     # load VAE
-    vae, random_state = load_vae(model_dir, device, with_rand_state=True)
+    vae, random_state = load_vae(model_dir, 'cpu', with_rand_state=True)
     vae.eval()
     for param in vae.parameters():
         param.requires_grad = False
@@ -60,7 +58,7 @@ def main(model_dir, healthy_dir, defective_dir, max_size=6, val_split=0.1):
             ax.axis('off')
 
             if idx >= max_size:
-                cbar_ax = fig.add_axes([0.2, 0.05, 0.6, 0.03])  # [left, bottom, width, height]
+                cbar_ax = fig.add_axes([0.2, 0.05, 0.9, 0.03])  # [left, bottom, width, height]
                 fig.colorbar(im, cax=cbar_ax, orientation='horizontal')
 
                 plt.tight_layout(rect=[0, 0.1, 1, 1])  # Leave space for colorbar
@@ -69,7 +67,7 @@ def main(model_dir, healthy_dir, defective_dir, max_size=6, val_split=0.1):
 
 
 if __name__ == "__main__":
-    model_dir = r"J:\SET-Mebios_CFD-VIS-DI0327\HugoLi\PomestoreID\Pear\for_training\model\20250614-104844"
+    model_dir = r"J:\SET-Mebios_CFD-VIS-DI0327\HugoLi\PomestoreID\Pear\for_training\model\20250808-141953"
     healthy_dir = r"J:\SET-Mebios_CFD-VIS-DI0327\HugoLi\PomestoreID\Pear\for_training\healthy"
     defective_dir = r"J:\SET-Mebios_CFD-VIS-DI0327\HugoLi\PomestoreID\Pear\for_training\defective"
 
