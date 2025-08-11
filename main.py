@@ -30,7 +30,7 @@ def vae_generate(model_dir, save_dir, batch_size:int=2, batches:int=16):
     with torch.no_grad():
         for batch in tqdm(range(batches), desc="Validating", unit="batch"):
             z = torch.randn(batch_size, 1, 32, 32, 32, device=device, requires_grad=False)  # Sample from latent space
-            z = diffuser.denoise(z, steps=100)
+            z = diffuser.denoise(z, steps=200)
             arr = vae.decode(z).squeeze().cpu().numpy()
             for i in range(batch_size):
                 img = arr[i, :, :, :]
