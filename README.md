@@ -4,7 +4,6 @@
 A diffusion-based generative modeling framework for **3D computed tomography (CT) scans of pears**.  
 This project enables the creation of realistic synthetic pear CT volumes for research in agricultural imaging, defect detection, dataset augmentation, and computer vision.
 
----
 
 ## ✨ Features
 - 📦 3D generative model for volumetric CT data  
@@ -13,7 +12,6 @@ This project enables the creation of realistic synthetic pear CT volumes for res
 - 👀 Tools for visualization and quality metrics  
 - 🌱 Extensible to other agricultural or biological datasets  
 
----
 
 ## ⚙️ Installation
 ```bash
