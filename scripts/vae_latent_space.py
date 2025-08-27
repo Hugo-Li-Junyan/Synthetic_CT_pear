@@ -99,18 +99,27 @@ def main(model_dir, healthy_dir, defective_dir, method='tsne', sample_size=64, p
             param.requires_grad = False
         z = torch.randn(1, 1, 32, 32, 32, device=device, requires_grad=False)  # Sample from latent space
         z_arr = diffuser.denoise(z, steps=200, save_steps=20)
-        fig, axes = plt.subplots(nrows=1, ncols=10, figsize=(40, 4))
+        fig, axes = plt.subplots(nrows=3, ncols=10, figsize=(40, 12))
         for step, z_denoised in enumerate(z_arr):
             volume = z_denoised[0, :, :, :, :].squeeze().cpu().numpy()
-            ax = axes[step]
+            ax = axes[0, step]
+            ax.imshow(volume[:, :, 16].T, cmap='gray', origin='lower')
+            ax.axis('off')
+
+            ax = axes[1, step]
             ax.imshow(volume[:, 16, :].T, cmap='gray', origin='lower')
             ax.axis('off')
+
+            ax = axes[2, step]
+            ax.imshow(volume[16, :, :].T, cmap='gray', origin='lower')
+            ax.axis('off')
+
             #plot_volume(volume)
             volume = ((volume - np.min(volume)) / (np.max(volume) - np.min(volume)) * 255).astype(np.uint8)
             img = nib.Nifti1Image(volume, np.eye(4))
             nib.save(img, os.path.join(model_dir, f'{step}.nii'))
         plt.tight_layout()
-        plt.show()
+        plt.savefig("diffusion.png", bbox_inches='tight', pad_inches=0)
     else:
         z, labels = vae_latent(vae, dataset, sample_size, device)
         if method == 'tsne':
