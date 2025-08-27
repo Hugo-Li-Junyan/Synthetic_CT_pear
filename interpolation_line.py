@@ -7,6 +7,7 @@ import nibabel as nib
 from utils.load_models import load_vae, load_diffuser
 import json
 import matplotlib.pyplot as plt
+import argparse
 
 
 def linear(w,v0,v1):
@@ -77,7 +78,7 @@ def interpolate_latents(latent_vec1, latent_vec2, interpolation, diffuser, num_s
         return interpolated_latents
 
 
-def main(model_dir, save_dir, healthy_dir, defective_dir, num_steps=10, show_latent=False, diffusion=False, interpolation:str ='slerp'):
+def line_interpolate(model_dir, save_dir, healthy_dir, defective_dir, num_steps=10, show_latent=False, diffusion=False, interpolation:str ='slerp'):
     device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
     print('Using', 'GPU' if torch.cuda.is_available() else 'CPU')
 
@@ -134,13 +135,19 @@ def main(model_dir, save_dir, healthy_dir, defective_dir, num_steps=10, show_lat
         img = nib.Nifti1Image(arr, np.eye(4))
         nib.save(img, os.path.join(save_dir, f'{i}.nii'))
 
-
-if __name__ == "__main__":
-    # load vae model
-    model_dir = r"J:\SET-Mebios_CFD-VIS-DI0327\HugoLi\PomestoreID\Pear\for_training\model\20250808-141953"
-    healthy_pth = r"J:\SET-Mebios_CFD-VIS-DI0327\HugoLi\PomestoreID\Pear\for_training\healthy\A34.nii"
-    defective_pth = r"J:\SET-Mebios_CFD-VIS-DI0327\HugoLi\PomestoreID\Pear\for_training\defective\A08.nii"
-    save_dir = r"J:\SET-Mebios_CFD-VIS-DI0327\HugoLi\PomestoreID\Pear\for_training\VAE_line_interpolation"
+def main():
+    parser = argparse.ArgumentParser(description="line interpolation")
+    # dir parser
+    parser.add_argument("--healthy_pth", type=str, required=True, help="healthy_pth")
+    parser.add_argument("--defective_pth", type=str, required=True, help="defective_pth")
+    parser.add_argument("--model_dir", type=str, required=True, help="model_dir")
+    parser.add_argument("--save_dir", type=str, required=True, help="save_dir")
+    args = parser.parse_args()
 
     # Create dataset instance
-    main(model_dir, save_dir, healthy_pth, defective_pth, num_steps=11, show_latent=True, interpolation='slerp', diffusion=False)
+    line_interpolate(args.model_dir, args.save_dir, args.healthy_pth, args.defective_pth, num_steps=11, show_latent=True,
+                     interpolation='slerp', diffusion=False)
+
+
+if __name__ == "__main__":
+    main()

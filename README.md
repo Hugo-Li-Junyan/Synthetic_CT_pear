@@ -41,7 +41,7 @@ pip install -r requirements.txt
 ```
 👀 Interpolation
 ```bash
-  python interpolation_line.py 
+  python interpolation_line.py --healthy_pth --defective_pth --model_dir --save_dir
 ```
 
 	
