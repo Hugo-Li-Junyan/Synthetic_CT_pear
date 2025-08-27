@@ -142,11 +142,14 @@ def main():
     parser.add_argument("--defective_pth", type=str, required=True, help="defective_pth")
     parser.add_argument("--model_dir", type=str, required=True, help="model_dir")
     parser.add_argument("--save_dir", type=str, required=True, help="save_dir")
+    parser.add_argument("--show_latent", type=bool, default=False, help="show latent space or image space")
+    parser.add_argument("--num_steps", type=int, default=11, help="show latent space or image space")
+    parser.add_argument("--diffusion", type=bool, default=False, help="whether to use diffusion")
     args = parser.parse_args()
 
     # Create dataset instance
-    line_interpolate(args.model_dir, args.save_dir, args.healthy_pth, args.defective_pth, num_steps=11, show_latent=True,
-                     interpolation='slerp', diffusion=False)
+    line_interpolate(args.model_dir, args.save_dir, args.healthy_pth, args.defective_pth, num_steps=args.num_steps,
+                     show_latent=args.show_latent, interpolation='slerp', diffusion=args.diffusion)
 
 
 if __name__ == "__main__":
