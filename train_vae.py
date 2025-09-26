@@ -12,6 +12,8 @@ from component.vae import VAE
 from component.gan import PatchGAN
 import gc         # garbage collect library
 import argparse
+from tqdm import tqdm
+from utils.metrics import mae, ssim, psnr
 
 
 def train(dataset, vae, save_dir, gan, vae_lr=1e-4, gan_lr=1e-4, epochs=500, batch_size=8, val_split=0.1, test_split=0.1,
@@ -47,11 +49,15 @@ def train(dataset, vae, save_dir, gan, vae_lr=1e-4, gan_lr=1e-4, epochs=500, bat
 
     # train validation separation
     val_size = int(len(dataset) * val_split)
-    train_size = len(dataset) - val_size
+    test_size = int(len(dataset) * test_split)
+    val_test_size = val_size + test_size
+    train_size = len(dataset) - val_test_size
     generator = torch.Generator().manual_seed(random_state)
-    train_dataset, val_dataset = random_split(dataset, [train_size, val_size], generator=generator)
+    train_dataset, val_test_dataset = random_split(dataset, [train_size, val_test_size], generator=generator)
+    val_dataset, test_dataset = random_split(val_test_dataset, [val_size, test_size], generator=generator)
     train_loader = DataLoader(train_dataset, batch_size=batch_size, shuffle=True, pin_memory=True)
     val_loader = DataLoader(val_dataset, batch_size=batch_size, shuffle=False, pin_memory=True)
+    test_loader = DataLoader(test_dataset, batch_size=batch_size, shuffle=False, pin_memory=True)
 
     # training settings
     hyperparameters = {'model': 'VAE-GAN', 'vae_latent_space': vae.latent_space,
@@ -166,7 +172,7 @@ def train(dataset, vae, save_dir, gan, vae_lr=1e-4, gan_lr=1e-4, epochs=500, bat
                              val_kl_loss, val_adv_loss, val_gan_loss, beta])
 
         # Save latest model (in case of crash)
-        if (epoch+1) % 3 == 0:
+        if (epoch+1) % 5 == 0:
             checkpoint_info = {'epoch': epoch+1,
                                'random_state': random_state,
                                'vae_state_dict': vae.state_dict(),
@@ -193,6 +199,20 @@ def train(dataset, vae, save_dir, gan, vae_lr=1e-4, gan_lr=1e-4, epochs=500, bat
             if (early_stop_count + 1) % 10 == 0:
                 print(f'Validation loss has not been reduced for {early_stop_count} epochs')
 
+    with torch.no_grad():
+        MAE, SSIM, PSNR = 0.0, 0.0, 0.0
+        for data in tqdm(test_loader, desc="Validating", unit="batch"):
+            x, _ = data
+            x = x.to(device)
+            reconstructed_x, _, _ = vae(x)
+            MAE += mae(x, reconstructed_x).item() * x.size(0)
+            SSIM += ssim(x, reconstructed_x).item() * x.size(0)
+            PSNR += psnr(x, reconstructed_x).item() * x.size(0)
+        MAE /= test_size
+        SSIM /= test_size
+        PSNR /= test_size
+    print(f"{100*test_split}% test data with {test_size} instances")
+    print(f"MAE = {MAE:.4f}, SSIM = {SSIM:.4f}, PSNR = {PSNR:.4F}")
 
 def main():
     parser = argparse.ArgumentParser(description="Train Adversarial VAE model")
