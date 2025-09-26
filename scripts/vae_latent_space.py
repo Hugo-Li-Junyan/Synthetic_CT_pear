@@ -25,7 +25,7 @@ def vae_latent(vae, dataset, sample_size, device):
             z = vae.reparameterize(mu,logvar)
             labels.append(label)
             break
-        return z, labels
+        return x, z, labels
 
 
 def visualize_tsne(z, labels, pca_components=50):
@@ -121,7 +121,7 @@ def main(model_dir, healthy_dir, defective_dir, method='tsne', sample_size=64, p
         plt.tight_layout()
         plt.savefig("diffusion.png", bbox_inches='tight', pad_inches=0)
     else:
-        z, labels = vae_latent(vae, dataset, sample_size, device)
+        x, z, labels = vae_latent(vae, dataset, sample_size, device)
         if method == 'tsne':
             visualize_tsne(z, labels, pca_components=pca_components)
         elif method == 'umap':
@@ -131,10 +131,37 @@ def main(model_dir, healthy_dir, defective_dir, method='tsne', sample_size=64, p
                 warnings.warn('only visualize 1 sample')
             print(f'label is {labels[0]} (0 for healthy, 1 for defective)')
             volume = z[0, :, :, :, :].squeeze().cpu().numpy()
-            plot_volume(volume)
+            #plot_volume(volume)
             volume = ((volume - np.min(volume)) / (np.max(volume) - np.min(volume)) * 255).astype(np.uint8)
             img = nib.Nifti1Image(volume, np.eye(4))
+            plt.axis('off')
+            plt.imshow(volume[16, :, :], cmap='gray')
+            plt.show()
+
+            plt.axis('off')
+            plt.imshow(volume[:,16,:], cmap='gray')
+            plt.show()
+
+            plt.axis('off')
+            plt.imshow(volume[:, :, 16], cmap='gray')
+            plt.show()
             nib.save(img, os.path.join(model_dir, 'latent.nii'))
+
+            volume = x[0, :, :, :, :].squeeze().cpu().numpy()
+            #plot_volume(volume)
+            volume = ((volume - np.min(volume)) / (np.max(volume) - np.min(volume)) * 255).astype(np.uint8)
+            plt.axis('off')
+            plt.imshow(volume[64, :, :], cmap='gray')
+            plt.show()
+            plt.axis('off')
+            plt.imshow(volume[:,64,:], cmap='gray')
+            plt.show()
+            plt.axis('off')
+            plt.imshow(volume[:, :, 64], cmap='gray')
+            plt.show()
+            img = nib.Nifti1Image(volume, np.eye(4))
+            nib.save(img, os.path.join(model_dir, 'real.nii'))
+
         else:
             raise ValueError('only tsne and umap are supported')
 
@@ -144,4 +171,4 @@ if __name__ == "__main__":
     model_dir = r"J:\SET-Mebios_CFD-VIS-DI0327\HugoLi\PomestoreID\Pear\for_training\model\20250626-021325"
     healthy_dir = r"J:\SET-Mebios_CFD-VIS-DI0327\HugoLi\PomestoreID\Pear\for_training\healthy"
     defective_dir = r"J:\SET-Mebios_CFD-VIS-DI0327\HugoLi\PomestoreID\Pear\for_training\defective"
-    main(model_dir, healthy_dir, defective_dir, method='diffusion')
+    main(model_dir, healthy_dir, defective_dir, method='volume', sample_size=1)

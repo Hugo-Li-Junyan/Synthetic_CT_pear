@@ -14,7 +14,7 @@ import gc         # garbage collect library
 import argparse
 
 
-def train(dataset, vae, save_dir, gan, vae_lr=1e-4, gan_lr=1e-4, epochs=500, batch_size=8, val_split=0.1,
+def train(dataset, vae, save_dir, gan, vae_lr=1e-4, gan_lr=1e-4, epochs=500, batch_size=8, val_split=0.1, test_split=0.1,
           load_model_id=None, beta=1e-6, loss_criterion='MAE', random_state=42):
     # device ready
     device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
