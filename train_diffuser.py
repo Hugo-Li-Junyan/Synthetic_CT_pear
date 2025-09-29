@@ -120,7 +120,7 @@ def train(dataset, vae, diffuser, model_dir, lr, epochs, batch_size, val_split=0
             writer.writerow([epoch + 1, train_loss, val_loss, current_lr])
 
         # Save latest model (in case of crash)
-        if (epoch + 1) % 3 == 0:
+        if (epoch + 1) % 5 == 0:
             checkpoint_info = {'epoch': epoch + 1,
                                'random_state': random_state,
                                'diffuser_state_dict': diffuser.state_dict(),
