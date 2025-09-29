@@ -1,8 +1,8 @@
 #!/bin/bash
 
-#SBATCH --job-name=train_vae_job
-#SBATCH --output=train_vae_job.out
-#SBATCH --error=train_vae_job.err
+#SBATCH --job-name=train_diffusion_job
+#SBATCH --output=train_diffusion_job.out
+#SBATCH --error=train_diffusion_job.err
 
 #SBATCH --partition=gpu_h100
 #SBATCH --ntasks=1
