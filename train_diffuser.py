@@ -183,7 +183,7 @@ def main():
     # hyperparameter
     parser.add_argument("--lr", type=float, default=1e-5, help="diffuser learning rate")
     parser.add_argument("--epochs", type=int, default=800, help="epochs")
-    parser.add_argument("--batch_size", type=int, default=8, help="batch size")
+    parser.add_argument("--batch_size", type=int, default=16, help="batch size")
     parser.add_argument("--random_state", type=int, default=42, help="random_state")
 
     args = parser.parse_args()
