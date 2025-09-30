@@ -19,7 +19,7 @@ source /data/leuven/362/vsc36240/miniconda3_wice/etc/profile.d/conda.sh
 conda activate base
 cd /data/leuven/362/vsc36240/project/synthetic_data/Synthetic_CT_pear
 # Run your script with parameters
-python ./main.py --model_dir ../model/20250626-021325 --save_dir ../generation
+python ./main.py --model_dir ../model/20250926-120749 --save_dir ../generation
 
 # Optional: deactivate conda env (not necessary, but clean)
 conda deactivate
