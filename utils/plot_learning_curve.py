@@ -25,11 +25,11 @@ def plot_vae_log(csv_path, columns):
 
     plt.figure(figsize=(12, 6))
     # Plot each column
-    labels = ['Generator', 'Discriminator']
+    labels = ['Train Loss', 'Validation Loss']
     for i, col in enumerate(columns):
         sns.lineplot(data=df, x=df.index, y=col, label=labels[i])
 
-    plt.ylim(-0.3, 0.5)
+    #plt.ylim(-0.002, 0.01)
     plt.xlabel('Epoch')
     plt.ylabel('Loss')
     plt.legend()
@@ -37,4 +37,4 @@ def plot_vae_log(csv_path, columns):
     plt.show()
 
 if __name__ == '__main__':
-    plot_vae_log(r'J:\SET-Mebios_CFD-VIS-DI0327\HugoLi\PomestoreID\Pear\for_training\model\20250626-021325\vae_log.csv', ['Adversarial_train', 'Discriminator_train'])
+    plot_vae_log(r'J:\SET-Mebios_CFD-VIS-DI0327\HugoLi\PomestoreID\Pear\for_training\model\20250926-120749\diffuser_log.csv', ['Train Loss', 'Validation Loss'])
