@@ -73,7 +73,7 @@ def train(dataset, vae, diffuser, model_dir, lr, epochs, batch_size, val_split=0
     early_stop_count = 0
     print('Training starts now')
     #std_first_batch = None
-    for epoch in range(start_epoch, epochs + 1):
+    for epoch in range(start_epoch, epochs):
         train_loss = 0.0
         diffuser.train()
         for data in train_loader:
