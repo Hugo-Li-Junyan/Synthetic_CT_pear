@@ -180,15 +180,15 @@ class ResNet(nn.Module):
 
         return x
 
-def get_activations_from_dataloader(model, data_loader, num_samples, dims, batch_size):
+def get_activations_from_dataloader(model, data_loader, num_samples, batch_size):
 
-    pred_arr = np.empty((num_samples, dims))
+    pred_arr = np.empty((num_samples, 2048))
     for i, batch in enumerate(data_loader):
         if i % 10 == 0:
             print('\rPropagating batch %d' % i, end='', flush=True)
-        batch = batch.float().cuda()
+        x, label = batch
         with torch.no_grad():
-            pred = model(batch)
+            pred = model(x)
 
         if i*batch_size > pred_arr.shape[0]:
             pred_arr[i*batch_size:] = pred.cpu().numpy()
@@ -214,11 +214,11 @@ def resnet50(**kwargs):
     model = ResNet(Bottleneck, [3, 4, 6, 3], **kwargs)
     return model
 
-def get_feature_extractor():
+def get_feature_extractor(pretrained_resnet):
     model = resnet50(shortcut_type='B')
     model.conv_seg = nn.Sequential(nn.AdaptiveAvgPool3d((1, 1, 1)), Flatten()) # (N, 512)
     # ckpt from https://drive.google.com/file/d/1399AsrYpQDi1vq6ciKRQkfknLsQQyigM/view?usp=sharing
-    ckpt = torch.load("../gnn_shared/ckpt/pretrain/resnet_50.pth")
+    ckpt = torch.load(pretrained_resnet)
     ckpt = trim_state_dict_name(ckpt["state_dict"])
     model.load_state_dict(ckpt) # No conv_seg module in ckpt
     model = nn.DataParallel(model).cuda()
@@ -290,30 +290,35 @@ def post_process(act):
 def interpolate_3d(img):
     return F.interpolate(img, size=(256,256,256), mode='trilinear', align_corners=False)
 
-def calculate_fid_real(healthy, defective, fake, dims, batch_size):
+def calculate_fid_real(pretrained_resnet, healthy, defective, fake, batch_size):
     """Calculates the FID of two paths"""
+    if os.path.exists('act_real.npy'):
+        act_real = np.load('act_real.npy')
+    else:
+        model = get_feature_extractor(pretrained_resnet)
+        #dataset = COPD_dataset(img_size=args.img_size, stage="train", fold=args.fold, threshold=600)
+        dataset_real = TwoClassDataset(healthy, defective, transform=interpolate_3d)
+        num_samples_real = len(dataset_real)
+        data_loader_real = torch.utils.data.DataLoader(dataset_real, batch_size=batch_size,drop_last=False,shuffle=False)
+        act_real = get_activations_from_dataloader(model, data_loader_real, num_samples_real, batch_size)
+        np.save('act_real.npy', act_real)
+    m, s = post_process(act_real)
 
-    model = get_feature_extractor()
-    #dataset = COPD_dataset(img_size=args.img_size, stage="train", fold=args.fold, threshold=600)
-    dataset_real = TwoClassDataset(healthy, defective, transform=interpolate_3d)
-    num_samples_real = dataset_real
-    data_loader_real = torch.utils.data.DataLoader(dataset_real, batch_size=batch_size,drop_last=False,shuffle=False)
-    act = get_activations_from_dataloader(model, data_loader_real, num_samples_real, dims, batch_size)
-    m, s = post_process(act)
 
-    model = get_feature_extractor()
+    model = get_feature_extractor(pretrained_resnet)
     dataset_fake = OneClassDataset(fake, transform=interpolate_3d)
-    num_samples_fake = dataset_fake
+    num_samples_fake = len(dataset_fake)
     data_loader_fake = torch.utils.data.DataLoader(dataset_fake, batch_size=batch_size, drop_last=False, shuffle=False)
-    act = get_activations_from_dataloader(model, data_loader_fake, num_samples_fake, dims, batch_size)
-    m1, s1 = post_process(act)
+    act_fake = get_activations_from_dataloader(model, data_loader_fake, num_samples_fake, batch_size)
+    m1, s1 = post_process(act_fake)
 
     fid_value = calculate_frechet_distance(m1, s1, m, s)
     print('FID: ', fid_value)
 
 
 if __name__ == '__main__':
-    healthy = r'J:\SET-Mebios_CFD-VIS-DI0327\HugoLi\PomestoreID\Pear\for_training\healthy'
-    defective = r'J:\SET-Mebios_CFD-VIS-DI0327\HugoLi\PomestoreID\Pear\for_training\defective'
-    fake = r'J:\SET-Mebios_CFD-VIS-DI0327\HugoLi\PomestoreID\Pear\for_training\model\20250926-120749\VAE_generation'
-    calculate_fid_real(healthy, defective, fake, 1, 16)
+    healthy = r'D:/Hugo/healthy'
+    defective = r'D:/Hugo/defective'
+    fake = r'D:\Hugo\VAE_generation'
+    pretrained_resnet = r"D:/Hugo/resnet_50.pth"
+    calculate_fid_real(pretrained_resnet, healthy, defective, fake,24)

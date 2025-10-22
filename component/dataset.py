@@ -37,7 +37,9 @@ class TwoClassDataset(Dataset):
         img = torch.tensor(img, dtype=torch.float32)
         img = img.unsqueeze(0)
         if self.transform:
+            img = img.unsqueeze(0)
             img = self.transform(img)
+            img = img.squeeze().unsqueeze(0)
         return img, label
 
 # Define the custom dataset
@@ -69,5 +71,7 @@ class OneClassDataset(Dataset):
         img = torch.tensor(img, dtype=torch.float32)
         img = img.unsqueeze(0)
         if self.transform:
+            img = img.unsqueeze(0)
             img = self.transform(img)
-        return img
+            img = img.squeeze().unsqueeze(0)
+        return img, 0
