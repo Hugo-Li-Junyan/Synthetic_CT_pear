@@ -4,7 +4,7 @@ import numpy as np
 import nibabel as nib
 from utils.load_models import load_vae
 import matplotlib.pyplot as plt
-from component import MedicalImageDataset
+from component import TwoClassDataset
 from torch.utils.data import DataLoader, random_split
 
 
@@ -15,7 +15,7 @@ def main(model_dir, healthy_dir, defective_dir, max_size=6, val_split=0.1):
     for param in vae.parameters():
         param.requires_grad = False
 
-    dataset = MedicalImageDataset(healthy_dir, defective_dir)
+    dataset = TwoClassDataset(healthy_dir, defective_dir)
     generator = torch.Generator().manual_seed(random_state)
     _, val_dataset = random_split(dataset, [1 - val_split, val_split], generator=generator)
     val_loader = DataLoader(val_dataset, batch_size=1, shuffle=True)

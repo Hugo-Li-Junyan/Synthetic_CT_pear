@@ -5,7 +5,7 @@ import torch.optim as optim
 from torch.utils.data import DataLoader, random_split
 import time
 import os
-from component.dataset import MedicalImageDataset
+from component.dataset import TwoClassDataset
 import torch
 import csv
 from component.vae import VAE
@@ -247,7 +247,7 @@ def main():
             isotropic=True
         )
     ])
-    dataset = MedicalImageDataset(args.class1_dir, args.class2_dir, transform=transform)
+    dataset = TwoClassDataset(args.class1_dir, args.class2_dir, transform=transform)
     input_shape = (1, 128, 128, 128)
     vae = VAE(input_shape=input_shape, featuremap_size=args.vae_featuremap_size, base_channel=args.vae_base_channel,
               flatten_latent_dim=None, with_residual=True)

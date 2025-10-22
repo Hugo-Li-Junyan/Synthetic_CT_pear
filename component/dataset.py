@@ -5,7 +5,7 @@ import os
 import torch
 
 # Define the custom dataset
-class MedicalImageDataset(Dataset):
+class TwoClassDataset(Dataset):
     def __init__(self, class1_dir, class2_dir, transform=None):
         """
         Args:
@@ -39,3 +39,35 @@ class MedicalImageDataset(Dataset):
         if self.transform:
             img = self.transform(img)
         return img, label
+
+# Define the custom dataset
+class OneClassDataset(Dataset):
+    def __init__(self, folder, transform=None):
+        """
+        Args:
+            class1_dir (string): Path to the folder containing images from Class 1.
+            class2_dir (string): Path to the folder containing images from Class 2.
+            transform (callable, optional): Optional transform to be applied on a sample.
+        """
+        self.images = [os.path.join(folder, f) for f in os.listdir(folder)]
+        self.transform = transform
+
+    def __len__(self):
+        return len(self.images)
+
+    def __getitem__(self, idx):
+        # Determine if the image is from Class 1 or Class 2
+
+        img_path = self.images[idx]
+
+
+        # Load the image (Assuming 3D medical image in NIfTI format)
+        img = nib.load(img_path).get_fdata()
+        # Convert to PyTorch tensor
+        # Normalize the image if necessary
+        img = (img-np.min(img)) / (np.max(img)-np.min(img))  # Normalize between 0 and 1
+        img = torch.tensor(img, dtype=torch.float32)
+        img = img.unsqueeze(0)
+        if self.transform:
+            img = self.transform(img)
+        return img

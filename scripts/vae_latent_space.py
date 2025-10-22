@@ -3,7 +3,7 @@ import nibabel as nib
 import numpy as np
 import warnings
 import torch
-from component import MedicalImageDataset
+from component import TwoClassDataset
 import matplotlib.pyplot as plt
 from torch.utils.data import DataLoader
 from sklearn.manifold import TSNE
@@ -86,7 +86,7 @@ def visualize_umap(z, labels, pca_components=50):
 def main(model_dir, healthy_dir, defective_dir, method='tsne', sample_size=64, pca_components=None):
     device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
     print('Using', 'GPU' if torch.cuda.is_available() else 'CPU')
-    dataset = MedicalImageDataset(healthy_dir, defective_dir)
+    dataset = TwoClassDataset(healthy_dir, defective_dir)
     # load VAE
     vae = load_vae(model_dir, device)
     for param in vae.parameters():

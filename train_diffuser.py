@@ -5,7 +5,7 @@ import torchio as tio
 import torch.optim.lr_scheduler as lr_scheduler
 from torch.utils.data import DataLoader, random_split
 import torch.optim as optim
-from component import VAE, MedicalImageDataset, LatentDiffusion
+from component import VAE, TwoClassDataset, LatentDiffusion
 import os
 import csv
 
@@ -195,7 +195,7 @@ def main():
             isotropic=True
         )
     ])
-    dataset = MedicalImageDataset(args.class1_dir, args.class2_dir, transform=transform)
+    dataset = TwoClassDataset(args.class1_dir, args.class2_dir, transform=transform)
     model_dir = os.path.join(args.save_dir, args.model_id)
     vae = VAE(input_shape=(1, 128, 128, 128),
               featuremap_size=args.vae_featuremap_size,

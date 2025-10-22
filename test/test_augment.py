@@ -1,4 +1,4 @@
-from component.dataset import MedicalImageDataset
+from component.dataset import TwoClassDataset
 import torchio as tio
 from torch.utils.data import DataLoader
 from utils.visualization import plot_volume
@@ -16,7 +16,7 @@ if __name__ == '__main__':
     ])
     class1_dir = r"J:\SET-Mebios_CFD-VIS-DI0327\HugoLi\PomestoreID\Pear\for_training\healthy"
     class2_dir = r"J:\SET-Mebios_CFD-VIS-DI0327\HugoLi\PomestoreID\Pear\for_training\defective"
-    dataset = MedicalImageDataset(class1_dir, class2_dir, transform=transform)
+    dataset = TwoClassDataset(class1_dir, class2_dir, transform=transform)
     batch_size = 8
     test_loader = DataLoader(dataset, batch_size=batch_size, shuffle=True)
     with torch.no_grad():
