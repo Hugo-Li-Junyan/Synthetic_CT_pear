@@ -316,9 +316,34 @@ def calculate_fid_real(pretrained_resnet, healthy, defective, fake, batch_size):
     print('FID: ', fid_value)
 
 
+def calculate_fid_baseline(pretrained_resnet, folder1, folder2, batch_size):
+    """Calculates the FID of two paths"""
+    if os.path.exists('act_real.npy'):
+        act_real = np.load('act_real.npy')
+    else:
+        model = get_feature_extractor(pretrained_resnet)
+        #dataset = COPD_dataset(img_size=args.img_size, stage="train", fold=args.fold, threshold=600)
+        dataset_real = OneClassDataset(folder1, transform=interpolate_3d)
+        num_samples_real = len(dataset_real)
+        data_loader_real = torch.utils.data.DataLoader(dataset_real, batch_size=batch_size,drop_last=False,shuffle=False)
+        act_real = get_activations_from_dataloader(model, data_loader_real, num_samples_real, batch_size)
+        np.save('act_real.npy', act_real)
+    m, s = post_process(act_real)
+
+
+    model = get_feature_extractor(pretrained_resnet)
+    dataset_fake = OneClassDataset(folder2, transform=interpolate_3d)
+    num_samples_fake = len(dataset_fake)
+    data_loader_fake = torch.utils.data.DataLoader(dataset_fake, batch_size=batch_size, drop_last=False, shuffle=False)
+    act_fake = get_activations_from_dataloader(model, data_loader_fake, num_samples_fake, batch_size)
+    m1, s1 = post_process(act_fake)
+
+    fid_value = calculate_frechet_distance(m1, s1, m, s)
+    print('FID: ', fid_value)
+
+
 if __name__ == '__main__':
-    healthy = r'D:/Hugo/healthy'
-    defective = r'D:/Hugo/defective'
-    fake = r'D:\Hugo\VAE_generation'
+    folder_1 = r'J:\SET-Mebios_CFD-VIS-DI0327\HugoLi\PomestoreID\Pear\for_training\randomized_real_CT\folder_0'
+    folder_2 = r'J:\SET-Mebios_CFD-VIS-DI0327\HugoLi\PomestoreID\Pear\for_training\randomized_real_CT\folder_1'
     pretrained_resnet = r"D:/Hugo/resnet_50.pth"
-    calculate_fid_real(pretrained_resnet, healthy, defective, fake,24)
+    calculate_fid_baseline(pretrained_resnet, folder_1, folder_2,24)
