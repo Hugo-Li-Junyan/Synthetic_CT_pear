@@ -283,6 +283,7 @@ def train(args):
         json.dump(vars(args), file, indent=4)
 
     best_val_acc = 0.0
+    epochs_without_improvement = 0
     log_path = run_dir / "clf_3d_log.csv"
     with open(log_path, "w", newline="") as file:
         writer = csv.writer(file)
@@ -325,10 +326,26 @@ def train(args):
             ])
 
         save_checkpoint(run_dir / "latest.pth", model, optimizer, epoch + 1, val_metrics, args)
-        if val_metrics["accuracy"] >= best_val_acc:
+        improved = val_metrics["accuracy"] > best_val_acc + args.early_stop_min_delta
+        if improved:
             best_val_acc = val_metrics["accuracy"]
+            epochs_without_improvement = 0
             save_checkpoint(run_dir / "best.pth", model, optimizer, epoch + 1, val_metrics, args)
             print("New best classifier found")
+        else:
+            epochs_without_improvement += 1
+            if args.early_stop_patience > 0:
+                print(
+                    f"No validation accuracy improvement for "
+                    f"{epochs_without_improvement}/{args.early_stop_patience} epochs"
+                )
+
+        if args.early_stop_patience > 0 and epochs_without_improvement >= args.early_stop_patience:
+            print(
+                f"Early stopping at epoch {epoch + 1}. "
+                f"Best validation accuracy: {best_val_acc:.4f}"
+            )
+            break
 
     if args.test_dir and args.test_csv:
         test_dataset = CsvClassificationDataset(
@@ -369,6 +386,8 @@ def parse_args():
     parser.add_argument("--pseudo_start_epoch", type=int, default=5, help="first epoch that uses pseudo labels")
     parser.add_argument("--pseudo_threshold", type=float, default=0.95, help="minimum confidence for pseudo labels")
     parser.add_argument("--pseudo_weight", type=float, default=0.3, help="loss weight for pseudo-labeled samples")
+    parser.add_argument("--early_stop_patience", type=int, default=20, help="epochs without validation accuracy improvement before stopping; set 0 to disable")
+    parser.add_argument("--early_stop_min_delta", type=float, default=0.0, help="minimum validation accuracy gain counted as improvement")
     parser.add_argument("--class_weighted_loss", action="store_true", help="use inverse-frequency class weights")
     parser.add_argument("--augment", action="store_true", help="enable light 3D augmentation with torchio")
     parser.add_argument("--amp", action="store_true", help="use CUDA automatic mixed precision")
