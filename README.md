@@ -21,6 +21,7 @@ main.py                 Generate synthetic CT volumes with a trained VAE + diffu
 train_vae.py            Train the VAE-GAN reconstruction model
 train_diffuser.py       Train latent diffusion on top of a trained VAE
 train_clf_3d.py         Train a 3D ResNet classifier
+test_clf_3d.py          Test a saved 3D ResNet classifier checkpoint
 interpolation_line.py   Interpolate between two CT volumes in latent space
 med3d_fid.py            Compute 3D FID-style metrics with a pretrained 3D ResNet
 ```
@@ -190,15 +191,13 @@ python train_clf_3d.py \
   --pseudo_weight 0.3
 ```
 
-Training plus final test evaluation from a separate image folder and CSV:
+Run final test evaluation from a separate image folder and CSV after training:
 
 ```bash
-python train_clf_3d.py \
-  --class0_dir /path/to/healthy \
-  --class1_dir /path/to/defective \
+python test_clf_3d.py \
+  --checkpoint /path/to/models/classifier/20250626-021325/best.pth \
   --test_dir /path/to/test_images \
-  --test_csv /path/to/test_labels.csv \
-  --save_dir /path/to/models/classifier
+  --test_csv /path/to/test_labels.csv
 ```
 
 The test CSV should contain at least:

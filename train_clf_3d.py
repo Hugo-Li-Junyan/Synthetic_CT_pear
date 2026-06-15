@@ -52,45 +52,6 @@ class UnlabeledVolumeDataset(Dataset):
         return volume
 
 
-class CsvClassificationDataset(Dataset):
-    def __init__(self, image_dir, csv_path, filename_column="filename", label_column="label", transform=None):
-        self.image_dir = Path(image_dir)
-        self.transform = transform
-        self.samples = self._read_samples(csv_path, filename_column, label_column)
-        if not self.samples:
-            raise ValueError(f"No labeled samples found in CSV: {csv_path}")
-
-    def _read_samples(self, csv_path, filename_column, label_column):
-        samples = []
-        with open(csv_path, newline="") as file:
-            reader = csv.DictReader(file)
-            if reader.fieldnames is None:
-                raise ValueError(f"CSV has no header row: {csv_path}")
-            if filename_column not in reader.fieldnames:
-                raise ValueError(f"CSV is missing filename column: {filename_column}")
-            if label_column not in reader.fieldnames:
-                raise ValueError(f"CSV is missing label column: {label_column}")
-
-            for row in reader:
-                filename = row[filename_column].strip()
-                label = int(row[label_column])
-                path = self.image_dir / filename
-                if not path.exists():
-                    raise FileNotFoundError(f"CSV sample does not exist: {path}")
-                samples.append((path, label))
-        return samples
-
-    def __len__(self):
-        return len(self.samples)
-
-    def __getitem__(self, idx):
-        path, label = self.samples[idx]
-        volume = volume_to_tensor(load_nifti(path))
-        if self.transform:
-            volume = self.transform(volume)
-        return volume, torch.tensor(label, dtype=torch.long)
-
-
 class BasicBlock3D(nn.Module):
     expansion = 1
 
@@ -347,19 +308,6 @@ def train(args):
             )
             break
 
-    if args.test_dir and args.test_csv:
-        test_dataset = CsvClassificationDataset(
-            args.test_dir,
-            args.test_csv,
-            filename_column=args.filename_column,
-            label_column=args.label_column,
-        )
-        test_loader = make_loader(test_dataset, args.batch_size, False, args.num_workers, device)
-        checkpoint = torch.load(run_dir / "best.pth", map_location=device)
-        model.load_state_dict(checkpoint["model_state_dict"])
-        test_metrics = run_epoch(model, test_loader, criterion, device, amp=args.amp)
-        print(f"Test loss: {test_metrics['loss']:.4f} | Test accuracy: {test_metrics['accuracy']:.4f}")
-
     print(f"Training complete. Outputs saved in: {run_dir}")
 
 
@@ -369,10 +317,6 @@ def parse_args():
     parser.add_argument("--class1_dir", type=str, required=True, help="folder for class 1 volumes")
     parser.add_argument("--save_dir", type=str, required=True, help="directory for checkpoints and logs")
     parser.add_argument("--unlabeled_dir", type=str, default="", help="optional folder for pseudo-label training")
-    parser.add_argument("--test_dir", type=str, default="", help="optional test image folder")
-    parser.add_argument("--test_csv", type=str, default="", help="optional CSV with test labels")
-    parser.add_argument("--filename_column", type=str, default="filename", help="test CSV filename column")
-    parser.add_argument("--label_column", type=str, default="label", help="test CSV label column")
     parser.add_argument("--num_classes", type=int, default=2, help="number of classes")
     parser.add_argument("--base_channels", type=int, default=16, help="3D ResNet width; 16 is memory-friendly for 128^3")
     parser.add_argument("--dropout", type=float, default=0.2, help="classifier dropout")
@@ -392,10 +336,7 @@ def parse_args():
     parser.add_argument("--augment", action="store_true", help="enable light 3D augmentation with torchio")
     parser.add_argument("--amp", action="store_true", help="use CUDA automatic mixed precision")
     parser.add_argument("--cpu", action="store_true", help="force CPU training")
-    args = parser.parse_args()
-    if bool(args.test_dir) != bool(args.test_csv):
-        parser.error("--test_dir and --test_csv must be provided together")
-    return args
+    return parser.parse_args()
 
 
 if __name__ == "__main__":
