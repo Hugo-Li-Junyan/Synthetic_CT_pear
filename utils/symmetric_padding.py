@@ -62,6 +62,6 @@ def preprocess_folder(folder_path, output_path, new_size, compressed=False):
 
 
 if __name__ == '__main__':
-    path = r'J:\SET-Mebios_CFD-VIS-DI0327\HugoLi\PomestoreID\Pear\At_harvest\processed'
-    out_path = r'J:\SET-Mebios_CFD-VIS-DI0327\HugoLi\PomestoreID\Pear\for_training\healthy'
+    path = r'D:\Hugo\synthetic_paper\test_from_storage_exp\volumes'
+    out_path = r'D:\Hugo\synthetic_paper\test_from_storage_exp\padded_volumes'
     preprocess_folder(path, out_path, new_size=128)
