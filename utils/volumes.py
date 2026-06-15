@@ -36,7 +36,8 @@ def load_nifti(path, normalize=True):
 
 
 def volume_to_tensor(volume):
-    return torch.as_tensor(volume, dtype=torch.float32).unsqueeze(0)
+    volume = np.ascontiguousarray(volume, dtype=np.float32)
+    return torch.tensor(volume, dtype=torch.float32).unsqueeze(0)
 
 
 def to_uint8(volume):
