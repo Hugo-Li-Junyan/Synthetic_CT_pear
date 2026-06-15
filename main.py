@@ -1,18 +1,16 @@
 import argparse
-import numpy as np
 import torch
 import os
-import nibabel as nib
 from utils.load_models import load_vae, load_diffuser
 from tqdm import tqdm
+from utils.volumes import save_nifti, to_uint8
 
 
 def vae_generate(model_dir, save_dir, batch_size:int=2, batches:int=16):
     device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
     print('Using', 'GPU' if torch.cuda.is_available() else 'CPU')
 
-    if not os.path.exists(save_dir):
-        os.mkdir(save_dir)
+    os.makedirs(save_dir, exist_ok=True)
 
     # load VAE
     vae = load_vae(model_dir, device)
@@ -33,10 +31,8 @@ def vae_generate(model_dir, save_dir, batch_size:int=2, batches:int=16):
             z = diffuser.denoise(z, steps=200)
             arr = vae.decode(z).squeeze().cpu().numpy()
             for i in range(batch_size):
-                img = arr[i, :, :, :]
-                img = ((img - np.min(img)) / (np.max(img) - np.min(img)) * 255).astype(np.uint8)
-                img = nib.Nifti1Image(img, np.eye(4))
-                nib.save(img, os.path.join(save_dir, f'{count}.nii'))
+                img = to_uint8(arr[i, :, :, :])
+                save_nifti(img, os.path.join(save_dir, f'{count}.nii'))
                 count += 1
 
 def main():

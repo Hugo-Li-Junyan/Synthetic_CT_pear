@@ -192,3 +192,18 @@ cython_debug/
 #  refer to https://docs.cursor.com/context/ignore-files
 .cursorignore
 .cursorindexingignore
+
+# Project artifacts
+*.npy
+*.nii
+*.nii.gz
+*.pth
+*.pt
+*.ckpt
+*_log.csv
+*_hyperparameter.json
+interpolation_line.png
+artifacts/
+outputs/
+models/
+checkpoints/

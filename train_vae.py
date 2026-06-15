@@ -2,7 +2,7 @@ import json
 import warnings
 import torchio as tio
 import torch.optim as optim
-from torch.utils.data import DataLoader, random_split
+from torch.utils.data import DataLoader
 import time
 import os
 from component.dataset import TwoClassDataset
@@ -14,6 +14,7 @@ import gc         # garbage collect library
 import argparse
 from tqdm import tqdm
 from utils.metrics import mae, ssim, psnr
+from utils.splits import split_train_val_test
 
 
 def train(dataset, vae, save_dir, gan, vae_lr=1e-4, gan_lr=1e-4, epochs=500, batch_size=8, val_split=0.1, test_split=0.1,
@@ -48,13 +49,10 @@ def train(dataset, vae, save_dir, gan, vae_lr=1e-4, gan_lr=1e-4, epochs=500, bat
             warnings.warn(f"checkpoint path {checkpoint_path} not exists, skip loading")
 
     # train validation separation
-    val_size = int(len(dataset) * val_split)
-    test_size = int(len(dataset) * test_split)
-    val_test_size = val_size + test_size
-    train_size = len(dataset) - val_test_size
-    generator = torch.Generator().manual_seed(random_state)
-    train_dataset, val_test_dataset = random_split(dataset, [train_size, val_test_size], generator=generator)
-    val_dataset, test_dataset = random_split(val_test_dataset, [val_size, test_size], generator=generator)
+    train_dataset, val_dataset, test_dataset = split_train_val_test(dataset, val_split, test_split, random_state)
+    train_size = len(train_dataset)
+    val_size = len(val_dataset)
+    test_size = len(test_dataset)
     train_loader = DataLoader(train_dataset, batch_size=batch_size, shuffle=True, pin_memory=True)
     val_loader = DataLoader(val_dataset, batch_size=batch_size, shuffle=False, pin_memory=True)
     test_loader = DataLoader(test_dataset, batch_size=batch_size, shuffle=False, pin_memory=True)

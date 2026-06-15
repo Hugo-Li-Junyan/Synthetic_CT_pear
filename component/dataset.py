@@ -1,77 +1,55 @@
-import nibabel as nib  # For NIfTI files, if you're using .nii/.nii.gz format
-from torch.utils.data import Dataset, DataLoader
-import numpy as np
-import os
-import torch
+from torch.utils.data import Dataset
 
-# Define the custom dataset
+from utils.volumes import list_nifti_files, load_nifti, volume_to_tensor
+
+
+def _load_volume_tensor(path, transform=None):
+    img = volume_to_tensor(load_nifti(path))
+    if transform:
+        img = img.unsqueeze(0)
+        img = transform(img)
+        img = img.squeeze().unsqueeze(0)
+    return img
+
+
 class TwoClassDataset(Dataset):
     def __init__(self, class1_dir, class2_dir, transform=None):
         """
         Args:
-            class1_dir (string): Path to the folder containing images from Class 1.
-            class2_dir (string): Path to the folder containing images from Class 2.
-            transform (callable, optional): Optional transform to be applied on a sample.
+            class1_dir (str): Path to images from class 0.
+            class2_dir (str): Path to images from class 1.
+            transform (callable, optional): Optional transform to apply to each volume.
         """
-        self.class1_images = [os.path.join(class1_dir, f) for f in os.listdir(class1_dir)]
-        self.class2_images = [os.path.join(class2_dir, f) for f in os.listdir(class2_dir)]
+        self.class1_images = list_nifti_files(class1_dir)
+        self.class2_images = list_nifti_files(class2_dir)
         self.transform = transform
 
     def __len__(self):
         return len(self.class1_images) + len(self.class2_images)
 
     def __getitem__(self, idx):
-        # Determine if the image is from Class 1 or Class 2
         if idx < len(self.class1_images):
             img_path = self.class1_images[idx]
-            label = 0  # Class 1
+            label = 0
         else:
             img_path = self.class2_images[idx - len(self.class1_images)]
-            label = 1  # Class 2
+            label = 1
 
-        # Load the image (Assuming 3D medical image in NIfTI format)
-        img = nib.load(img_path).get_fdata()
-        # Convert to PyTorch tensor
-        # Normalize the image if necessary
-        img = (img-np.min(img)) / (np.max(img)-np.min(img))  # Normalize between 0 and 1
-        img = torch.tensor(img, dtype=torch.float32)
-        img = img.unsqueeze(0)
-        if self.transform:
-            img = img.unsqueeze(0)
-            img = self.transform(img)
-            img = img.squeeze().unsqueeze(0)
-        return img, label
+        return _load_volume_tensor(img_path, self.transform), label
 
-# Define the custom dataset
+
 class OneClassDataset(Dataset):
     def __init__(self, folder, transform=None):
         """
         Args:
-            class1_dir (string): Path to the folder containing images from Class 1.
-            class2_dir (string): Path to the folder containing images from Class 2.
-            transform (callable, optional): Optional transform to be applied on a sample.
+            folder (str): Path to images from one class.
+            transform (callable, optional): Optional transform to apply to each volume.
         """
-        self.images = [os.path.join(folder, f) for f in os.listdir(folder)]
+        self.images = list_nifti_files(folder)
         self.transform = transform
 
     def __len__(self):
         return len(self.images)
 
     def __getitem__(self, idx):
-        # Determine if the image is from Class 1 or Class 2
-
-        img_path = self.images[idx]
-
-
-        # Load the image (Assuming 3D medical image in NIfTI format)
-        img = nib.load(img_path).get_fdata()
-        # Convert to PyTorch tensor
-        # Normalize the image if necessary
-        img = (img-np.min(img)) / (np.max(img)-np.min(img))  # Normalize between 0 and 1
-        img = torch.tensor(img, dtype=torch.float32)
-        img = img.unsqueeze(0)
-        if self.transform:
-            img = img.unsqueeze(0)
-            img = self.transform(img)
-            img = img.squeeze().unsqueeze(0)
-        return img, 0
+        return _load_volume_tensor(self.images[idx], self.transform), 0

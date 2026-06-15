@@ -1,13 +1,9 @@
-import numpy as np
 import torch
-from component import VAE, LatentDiffusion
-from utils.visualization import plot_volume
 import os
-import nibabel as nib
 from utils.load_models import load_vae, load_diffuser
-import json
 import matplotlib.pyplot as plt
 import argparse
+from utils.volumes import load_nifti, save_nifti, to_uint8
 
 
 def linear(w,v0,v1):
@@ -45,8 +41,7 @@ def slerp(w, v0, v1):
 
 def compute_z(dir, vae, device, with_original=True):
     with torch.no_grad():
-        img_0 = nib.load(dir).get_fdata()
-        img_0 = (img_0 - np.min(img_0)) / (np.max(img_0) - np.min(img_0))  # Normalize between 0 and 1
+        img_0 = load_nifti(dir)
         x_0 = torch.tensor(img_0, requires_grad=False, dtype=torch.float32).unsqueeze(0).unsqueeze(0).to(device)
         mu_0, logvar_0 = vae.encode(x_0)
         std_0 = torch.exp(0.5 * logvar_0)
@@ -82,8 +77,7 @@ def line_interpolate(model_dir, save_dir, healthy_dir, defective_dir, num_steps=
     device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
     print('Using', 'GPU' if torch.cuda.is_available() else 'CPU')
 
-    if not os.path.exists(save_dir):
-        os.mkdir(save_dir)
+    os.makedirs(save_dir, exist_ok=True)
 
     # load VAE
     vae = load_vae(model_dir, device)
@@ -131,9 +125,7 @@ def line_interpolate(model_dir, save_dir, healthy_dir, defective_dir, num_steps=
     plt.savefig("interpolation_line.png", bbox_inches='tight', pad_inches=0)
 
     for i, arr in enumerate(generated_images):
-        arr = ((arr - np.min(arr)) / (np.max(arr) - np.min(arr)) * 255).astype(np.uint8)
-        img = nib.Nifti1Image(arr, np.eye(4))
-        nib.save(img, os.path.join(save_dir, f'{i}.nii'))
+        save_nifti(to_uint8(arr), os.path.join(save_dir, f'{i}.nii'))
 
 def main():
     parser = argparse.ArgumentParser(description="line interpolation")
@@ -142,9 +134,9 @@ def main():
     parser.add_argument("--defective_pth", type=str, required=True, help="defective_pth")
     parser.add_argument("--model_dir", type=str, required=True, help="model_dir")
     parser.add_argument("--save_dir", type=str, required=True, help="save_dir")
-    parser.add_argument("--show_latent", type=bool, default=False, help="show latent space or image space")
+    parser.add_argument("--show_latent", action="store_true", help="show latent space or image space")
     parser.add_argument("--num_steps", type=int, default=11, help="show latent space or image space")
-    parser.add_argument("--diffusion", type=bool, default=False, help="whether to use diffusion")
+    parser.add_argument("--diffusion", action="store_true", help="whether to use diffusion")
     args = parser.parse_args()
 
     # Create dataset instance

@@ -3,11 +3,12 @@ import json
 import torch
 import torchio as tio
 import torch.optim.lr_scheduler as lr_scheduler
-from torch.utils.data import DataLoader, random_split
+from torch.utils.data import DataLoader
 import torch.optim as optim
 from component import VAE, TwoClassDataset, LatentDiffusion
 import os
 import csv
+from utils.splits import split_train_val
 
 
 def train(dataset, vae, diffuser, model_dir, lr, epochs, batch_size, val_split=0.1, early_stop_patience=50,
@@ -33,10 +34,9 @@ def train(dataset, vae, diffuser, model_dir, lr, epochs, batch_size, val_split=0
         print(f"Loaded diffusion model from {diffuser_checkpoint_path}")
 
     # train validation separation
-    val_size = int(len(dataset) * val_split)
-    train_size = len(dataset) - val_size
-    generator = torch.Generator().manual_seed(random_state)
-    train_dataset, val_dataset = random_split(dataset, [train_size, val_size], generator=generator)
+    train_dataset, val_dataset = split_train_val(dataset, val_split, random_state)
+    train_size = len(train_dataset)
+    val_size = len(val_dataset)
     train_loader = DataLoader(train_dataset, batch_size=batch_size, shuffle=True, pin_memory=True)
     val_loader = DataLoader(val_dataset, batch_size=batch_size, shuffle=False, pin_memory=True)
 
