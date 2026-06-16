@@ -10,20 +10,46 @@ import numpy as np
 import torch
 import torch.nn as nn
 import torch.optim as optim
-from torch.utils.data import DataLoader, Dataset, Subset
+from torch.utils.data import DataLoader, Dataset
 from tqdm import tqdm
 
 from utils.splits import split_train_val
 from utils.volumes import list_nifti_files, load_nifti, volume_to_tensor
 
 
-class FolderPairClassificationDataset(Dataset):
-    def __init__(self, class0_dir, class1_dir, transform=None):
-        self.samples = [(path, 0) for path in list_nifti_files(class0_dir)]
-        self.samples += [(path, 1) for path in list_nifti_files(class1_dir)]
+class CsvRegressionDataset(Dataset):
+    def __init__(self, image_dir, csv_path, filename_column="filename", label_column="label", transform=None):
+        self.image_dir = Path(image_dir)
+        self.samples = self._read_samples(csv_path, filename_column, label_column)
         self.transform = transform
         if not self.samples:
-            raise ValueError("No NIfTI files found in the class folders")
+            raise ValueError(f"No labeled samples found in CSV: {csv_path}")
+
+    def _read_samples(self, csv_path, filename_column, label_column):
+        samples = []
+        valid_files = {path.name: path for path in list_nifti_files(self.image_dir)}
+        if not valid_files:
+            raise ValueError(f"No NIfTI files found in training folder: {self.image_dir}")
+
+        with open(csv_path, newline="") as file:
+            reader = csv.DictReader(file)
+            if reader.fieldnames is None:
+                raise ValueError(f"CSV has no header row: {csv_path}")
+            if filename_column not in reader.fieldnames:
+                raise ValueError(f"CSV is missing filename column: {filename_column}")
+            if label_column not in reader.fieldnames:
+                raise ValueError(f"CSV is missing label column: {label_column}")
+
+            for row in reader:
+                filename = row[filename_column].strip()
+                if filename not in valid_files:
+                    path = self.image_dir / filename
+                    raise FileNotFoundError(f"CSV sample does not exist or is not a NIfTI file: {path}")
+                label = float(row[label_column])
+                if label not in (0.0, 1.0, 2.0, 3.0):
+                    raise ValueError(f"Label must be one of 0, 1, 2, 3 for {filename}; got {label}")
+                samples.append((valid_files[filename], label))
+        return samples
 
     def __len__(self):
         return len(self.samples)
@@ -33,7 +59,7 @@ class FolderPairClassificationDataset(Dataset):
         volume = volume_to_tensor(load_nifti(path))
         if self.transform:
             volume = self.transform(volume)
-        return volume, torch.tensor(label, dtype=torch.long)
+        return volume, torch.tensor(label, dtype=torch.float32)
 
 
 class UnlabeledVolumeDataset(Dataset):
@@ -82,7 +108,7 @@ class BasicBlock3D(nn.Module):
 
 
 class ResNet3D(nn.Module):
-    def __init__(self, block=BasicBlock3D, layers=(2, 2, 2, 2), num_classes=2, base_channels=16, dropout=0.2):
+    def __init__(self, block=BasicBlock3D, layers=(2, 2, 2, 2), output_size=1, base_channels=16, dropout=0.2):
         super().__init__()
         self.in_channels = base_channels
         self.stem = nn.Sequential(
@@ -97,7 +123,7 @@ class ResNet3D(nn.Module):
         self.layer4 = self._make_layer(block, base_channels * 8, layers[3], stride=2)
         self.pool = nn.AdaptiveAvgPool3d((1, 1, 1))
         self.dropout = nn.Dropout(dropout)
-        self.fc = nn.Linear(base_channels * 8 * block.expansion, num_classes)
+        self.fc = nn.Linear(base_channels * 8 * block.expansion, output_size)
 
         for module in self.modules():
             if isinstance(module, nn.Conv3d):
@@ -146,47 +172,60 @@ def make_loader(dataset, batch_size, shuffle, num_workers, device):
     )
 
 
-def class_weights_from_dataset(dataset, num_classes, device):
-    labels = []
-    source = dataset.dataset if isinstance(dataset, Subset) else dataset
-    indices = dataset.indices if isinstance(dataset, Subset) else range(len(dataset))
-    for idx in indices:
-        labels.append(source.samples[idx][1])
-
-    counts = torch.bincount(torch.tensor(labels, dtype=torch.long), minlength=num_classes).float()
-    weights = counts.sum() / (counts.clamp_min(1.0) * num_classes)
-    return weights.to(device)
+def rounded_predictions(outputs, min_label=0, max_label=3):
+    return outputs.view(-1).detach().round().clamp(min_label, max_label).long()
 
 
-def run_epoch(model, loader, criterion, device, optimizer=None, amp=False, unlabeled_loader=None,
-              pseudo_weight=0.3, pseudo_threshold=0.95):
+def pseudo_targets_from_outputs(outputs, min_label=0, max_label=3):
+    return outputs.view(-1).detach().round().clamp(min_label, max_label).float()
+
+
+def run_epoch(
+    model,
+    loader,
+    criterion,
+    device,
+    optimizer=None,
+    amp=False,
+    min_label=0,
+    max_label=3,
+    unlabeled_loader=None,
+    pseudo_weight=0.3,
+    pseudo_threshold=0.25,
+):
     is_train = optimizer is not None
     model.train(is_train)
-    scaler = torch.amp.GradScaler("cuda", enabled=amp)
+    scaler = torch.amp.GradScaler("cuda", enabled=amp and device.type == "cuda")
     total_loss = 0.0
     correct = 0
     total = 0
+    mae_sum = 0.0
     pseudo_used = 0
     unlabeled_iter = cycle(unlabeled_loader) if is_train and unlabeled_loader is not None else None
 
     for x, y in tqdm(loader, desc="Train" if is_train else "Eval", unit="batch"):
         x = x.to(device, non_blocking=True)
-        y = y.to(device, non_blocking=True)
+        y = y.to(device, non_blocking=True).float()
 
         with torch.set_grad_enabled(is_train):
-            with torch.amp.autocast("cuda", enabled=amp):
-                logits = model(x)
-                loss = criterion(logits, y)
+            with torch.amp.autocast("cuda", enabled=amp and device.type == "cuda"):
+                outputs = model(x).view(-1)
+                loss = criterion(outputs, y.view(-1))
 
                 if unlabeled_iter is not None:
                     x_unlabeled = next(unlabeled_iter).to(device, non_blocking=True)
                     with torch.no_grad():
-                        pseudo_probs = torch.softmax(model(x_unlabeled), dim=1)
-                        confidence, pseudo_labels = pseudo_probs.max(dim=1)
-                        mask = confidence >= pseudo_threshold
+                        pseudo_raw = model(x_unlabeled).view(-1)
+                        pseudo_targets = pseudo_targets_from_outputs(
+                            pseudo_raw,
+                            min_label=min_label,
+                            max_label=max_label,
+                        )
+                        distance_to_label = (pseudo_raw - pseudo_targets).abs()
+                        mask = distance_to_label <= pseudo_threshold
                     if mask.any():
-                        pseudo_logits = model(x_unlabeled[mask])
-                        loss = loss + pseudo_weight * criterion(pseudo_logits, pseudo_labels[mask])
+                        pseudo_outputs = model(x_unlabeled[mask]).view(-1)
+                        loss = loss + pseudo_weight * criterion(pseudo_outputs, pseudo_targets[mask])
                         pseudo_used += int(mask.sum().item())
 
             if is_train:
@@ -196,12 +235,16 @@ def run_epoch(model, loader, criterion, device, optimizer=None, amp=False, unlab
                 scaler.update()
 
         total_loss += loss.item() * x.size(0)
-        correct += (logits.argmax(dim=1) == y).sum().item()
+        preds = rounded_predictions(outputs, min_label=min_label, max_label=max_label)
+        targets = y.view(-1).round().long()
+        correct += (preds == targets).sum().item()
+        mae_sum += (outputs.detach() - y.view(-1)).abs().sum().item()
         total += x.size(0)
 
     return {
         "loss": total_loss / max(total, 1),
-        "accuracy": correct / max(total, 1),
+        "mae": mae_sum / max(total, 1),
+        "rounded_accuracy": correct / max(total, 1),
         "pseudo_used": pseudo_used,
     }
 
@@ -223,7 +266,13 @@ def train(args):
     os.makedirs(args.save_dir, exist_ok=True)
 
     transform = build_transform(args.augment)
-    dataset = FolderPairClassificationDataset(args.class0_dir, args.class1_dir, transform=transform)
+    dataset = CsvRegressionDataset(
+        args.train_dir,
+        args.label_csv,
+        filename_column=args.filename_column,
+        label_column=args.label_column,
+        transform=transform,
+    )
     train_dataset, val_dataset = split_train_val(dataset, args.val_split, args.random_state)
     train_loader = make_loader(train_dataset, args.batch_size, True, args.num_workers, device)
     val_loader = make_loader(val_dataset, args.batch_size, False, args.num_workers, device)
@@ -233,9 +282,8 @@ def train(args):
         unlabeled_dataset = UnlabeledVolumeDataset(args.unlabeled_dir, transform=transform)
         unlabeled_loader = make_loader(unlabeled_dataset, args.batch_size, True, args.num_workers, device)
 
-    model = ResNet3D(num_classes=args.num_classes, base_channels=args.base_channels, dropout=args.dropout).to(device)
-    weights = class_weights_from_dataset(train_dataset, args.num_classes, device) if args.class_weighted_loss else None
-    criterion = nn.CrossEntropyLoss(weight=weights)
+    model = ResNet3D(output_size=1, base_channels=args.base_channels, dropout=args.dropout).to(device)
+    criterion = nn.SmoothL1Loss() if args.loss == "smooth_l1" else nn.MSELoss()
     optimizer = optim.AdamW(model.parameters(), lr=args.lr, weight_decay=args.weight_decay)
     scheduler = optim.lr_scheduler.CosineAnnealingLR(optimizer, T_max=args.epochs)
 
@@ -249,7 +297,7 @@ def train(args):
     log_path = run_dir / "clf_3d_log.csv"
     with open(log_path, "w", newline="") as file:
         writer = csv.writer(file)
-        writer.writerow(["epoch", "train_loss", "train_accuracy", "val_loss", "val_accuracy", "pseudo_used", "lr"])
+        writer.writerow(["epoch", "train_loss", "train_mae", "train_rounded_accuracy", "val_loss", "val_mae", "val_rounded_accuracy", "pseudo_used", "lr"])
 
     for epoch in range(args.epochs):
         active_unlabeled_loader = unlabeled_loader if epoch + 1 >= args.pseudo_start_epoch else None
@@ -260,18 +308,30 @@ def train(args):
             device,
             optimizer=optimizer,
             amp=args.amp,
+            min_label=args.min_label,
+            max_label=args.max_label,
             unlabeled_loader=active_unlabeled_loader,
             pseudo_weight=args.pseudo_weight,
             pseudo_threshold=args.pseudo_threshold,
         )
-        val_metrics = run_epoch(model, val_loader, criterion, device, amp=args.amp)
+        val_metrics = run_epoch(
+            model,
+            val_loader,
+            criterion,
+            device,
+            amp=args.amp,
+            min_label=args.min_label,
+            max_label=args.max_label,
+        )
         scheduler.step()
         lr = scheduler.get_last_lr()[0]
 
         print(
             f"Epoch [{epoch + 1}/{args.epochs}] "
-            f"Train loss: {train_metrics['loss']:.4f} acc: {train_metrics['accuracy']:.4f} | "
-            f"Val loss: {val_metrics['loss']:.4f} acc: {val_metrics['accuracy']:.4f} | "
+            f"Train loss: {train_metrics['loss']:.4f} mae: {train_metrics['mae']:.4f} "
+            f"rounded acc: {train_metrics['rounded_accuracy']:.4f} | "
+            f"Val loss: {val_metrics['loss']:.4f} mae: {val_metrics['mae']:.4f} "
+            f"rounded acc: {val_metrics['rounded_accuracy']:.4f} | "
             f"Pseudo: {train_metrics['pseudo_used']}"
         )
 
@@ -280,9 +340,11 @@ def train(args):
             writer.writerow([
                 epoch + 1,
                 train_metrics["loss"],
-                train_metrics["accuracy"],
+                train_metrics["mae"],
+                train_metrics["rounded_accuracy"],
                 val_metrics["loss"],
-                val_metrics["accuracy"],
+                val_metrics["mae"],
+                val_metrics["rounded_accuracy"],
                 train_metrics["pseudo_used"],
                 lr,
             ])
@@ -293,7 +355,7 @@ def train(args):
             best_val_loss = val_metrics["loss"]
             epochs_without_improvement = 0
             save_checkpoint(run_dir / "best.pth", model, optimizer, epoch + 1, val_metrics, args)
-            print("New best classifier found")
+            print("New best regressor found")
         else:
             epochs_without_improvement += 1
             if args.early_stop_patience > 0:
@@ -313,14 +375,18 @@ def train(args):
 
 
 def parse_args():
-    parser = argparse.ArgumentParser(description="Train a 3D ResNet classifier on NIfTI volumes")
-    parser.add_argument("--class0_dir", type=str, required=True, help="folder for class 0 volumes")
-    parser.add_argument("--class1_dir", type=str, required=True, help="folder for class 1 volumes")
+    parser = argparse.ArgumentParser(description="Train a 3D ResNet regressor on NIfTI volumes with rounded 0-3 outputs")
+    parser.add_argument("--train_dir", type=str, required=True, help="folder containing all training NIfTI volumes")
+    parser.add_argument("--label_csv", type=str, required=True, help="CSV with filename and target columns")
     parser.add_argument("--save_dir", type=str, required=True, help="directory for checkpoints and logs")
-    parser.add_argument("--unlabeled_dir", type=str, default="", help="optional folder for pseudo-label training")
-    parser.add_argument("--num_classes", type=int, default=2, help="number of classes")
+    parser.add_argument("--unlabeled_dir", type=str, default="", help="optional folder for regression pseudo-label training")
+    parser.add_argument("--filename_column", type=str, default="filename", help="CSV filename column")
+    parser.add_argument("--label_column", type=str, default="label", help="CSV target column")
+    parser.add_argument("--min_label", type=int, default=0, help="minimum rounded output label")
+    parser.add_argument("--max_label", type=int, default=3, help="maximum rounded output label")
     parser.add_argument("--base_channels", type=int, default=16, help="3D ResNet width; 16 is memory-friendly for 128^3")
-    parser.add_argument("--dropout", type=float, default=0.2, help="classifier dropout")
+    parser.add_argument("--dropout", type=float, default=0.2, help="regressor dropout")
+    parser.add_argument("--loss", choices=("mse", "smooth_l1"), default="mse", help="regression loss")
     parser.add_argument("--epochs", type=int, default=100, help="number of epochs")
     parser.add_argument("--batch_size", type=int, default=2, help="batch size for 128^3 volumes")
     parser.add_argument("--lr", type=float, default=1e-4, help="learning rate")
@@ -329,11 +395,10 @@ def parse_args():
     parser.add_argument("--random_state", type=int, default=42, help="random seed for train/validation split")
     parser.add_argument("--num_workers", type=int, default=2, help="DataLoader workers")
     parser.add_argument("--pseudo_start_epoch", type=int, default=5, help="first epoch that uses pseudo labels")
-    parser.add_argument("--pseudo_threshold", type=float, default=0.95, help="minimum confidence for pseudo labels")
+    parser.add_argument("--pseudo_threshold", type=float, default=0.25, help="maximum distance from rounded label for pseudo labels")
     parser.add_argument("--pseudo_weight", type=float, default=0.3, help="loss weight for pseudo-labeled samples")
     parser.add_argument("--early_stop_patience", type=int, default=20, help="epochs without validation loss improvement before stopping; set 0 to disable")
-    parser.add_argument("--early_stop_min_delta", type=float, default=0.0, help="minimum validation loss gain counted as improvement")
-    parser.add_argument("--class_weighted_loss", action="store_true", help="use inverse-frequency class weights")
+    parser.add_argument("--early_stop_min_delta", type=float, default=0.0, help="minimum validation loss drop counted as improvement")
     parser.add_argument("--augment", action="store_true", help="enable light 3D augmentation with torchio")
     parser.add_argument("--amp", action="store_true", help="use CUDA automatic mixed precision")
     parser.add_argument("--cpu", action="store_true", help="force CPU training")
