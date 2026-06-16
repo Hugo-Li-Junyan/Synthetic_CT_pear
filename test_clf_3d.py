@@ -140,7 +140,7 @@ def parse_args():
     parser.add_argument("--max_label", type=int, default=3, help="maximum rounded output label")
     parser.add_argument("--loss", choices=("mse", "smooth_l1"), default="mse", help="regression loss")
     parser.add_argument("--predictions_csv", type=str, default="", help="optional CSV path for raw and rounded predictions")
-    parser.add_argument("--batch_size", type=int, default=2, help="test batch size")
+    parser.add_argument("--batch_size", type=int, default=8, help="test batch size")
     parser.add_argument("--num_workers", type=int, default=2, help="DataLoader workers")
     parser.add_argument("--amp", action="store_true", help="use CUDA automatic mixed precision")
     parser.add_argument("--cpu", action="store_true", help="force CPU testing")
