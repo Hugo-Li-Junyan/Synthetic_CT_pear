@@ -10,9 +10,9 @@ from utils.volumes import list_nifti_files, load_nifti, volume_to_tensor
 def _load_volume_tensor(path, transform=None):
     img = volume_to_tensor(load_nifti(path))
     if transform:
-        img = img.unsqueeze(0)
+        #img = img.unsqueeze(0)
         img = transform(img)
-        img = img.squeeze().unsqueeze(0)
+        #img = img.squeeze().unsqueeze(0)
     return img
 
 
