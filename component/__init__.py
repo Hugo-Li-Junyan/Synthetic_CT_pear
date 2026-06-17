@@ -1,4 +1,4 @@
 from .vae import VAE
-from .dataset import TwoClassDataset
+from .dataset import CsvVolumeDataset
 from .diffuser import LatentDiffusion
 from .gan import PatchGAN

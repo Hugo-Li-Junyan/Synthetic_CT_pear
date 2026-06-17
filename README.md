@@ -28,16 +28,24 @@ med3d_fid.py            Compute 3D FID-style metrics with a pretrained 3D ResNet
 
 ## Data Format
 
-Most scripts expect two folders, one per class:
+Labeled training/evaluation scripts expect one image folder plus a CSV file:
 
 ```text
 data/
-  healthy/
+  images/
     A01.nii
     A02.nii
-  defective/
     B01.nii
-    B02.nii
+  labels.csv
+```
+
+The CSV should contain at least a filename column and a label column:
+
+```csv
+filename,label
+A01.nii,0
+A02.nii,0
+B01.nii,1
 ```
 
 Files are loaded with `nibabel`, min-max normalized to `[0, 1]`, and converted to PyTorch tensors with shape:
@@ -73,8 +81,8 @@ The VAE-GAN learns to reconstruct 3D pear CT volumes. Its checkpoint is also use
 
 ```bash
 python train_vae.py \
-  --class1_dir /path/to/healthy \
-  --class2_dir /path/to/defective \
+  --image_dir /path/to/images \
+  --labels_csv /path/to/labels.csv \
   --save_dir /path/to/models/vae \
   --epochs 500 \
   --batch_size 4
@@ -95,8 +103,8 @@ After training the VAE, train the diffuser using the VAE run folder as `--model_
 
 ```bash
 python train_diffuser.py \
-  --class1_dir /path/to/healthy \
-  --class2_dir /path/to/defective \
+  --image_dir /path/to/images \
+  --labels_csv /path/to/labels.csv \
   --save_dir /path/to/models/vae \
   --model_id 20250626-021325 \
   --epochs 800 \
@@ -165,12 +173,12 @@ interpolation_line.png
 
 `train_clf_3d.py` trains a compact 3D ResNet for binary or multi-class volume classification. It is designed to be practical for `128 x 128 x 128` CT images and datasets in the range of hundreds to a few thousand samples.
 
-Basic two-folder training:
+Basic CSV-labeled training:
 
 ```bash
 python train_clf_3d.py \
-  --class0_dir /path/to/healthy \
-  --class1_dir /path/to/defective \
+  --train_dir /path/to/images \
+  --label_csv /path/to/labels.csv \
   --save_dir /path/to/models/classifier \
   --epochs 100 \
   --batch_size 2 \
@@ -182,8 +190,8 @@ Training with an unlabeled folder for pseudo-labeling:
 
 ```bash
 python train_clf_3d.py \
-  --class0_dir /path/to/healthy \
-  --class1_dir /path/to/defective \
+  --train_dir /path/to/images \
+  --label_csv /path/to/labels.csv \
   --unlabeled_dir /path/to/unlabeled \
   --save_dir /path/to/models/classifier \
   --pseudo_start_epoch 5 \
@@ -235,8 +243,8 @@ Evaluate a trained VAE reconstruction model:
 ```bash
 python scripts/evaluate.py \
   --model_dir /path/to/models/vae/20250626-021325 \
-  --healthy_dir /path/to/healthy \
-  --defective_dir /path/to/defective \
+  --image_dir /path/to/images \
+  --labels_csv /path/to/labels.csv \
   --batch_size 1
 ```
 
@@ -254,14 +262,14 @@ The script reports MAE, SSIM, and PSNR on a validation split reconstructed by th
 
 ```bash
 # 1. Train VAE-GAN
-python train_vae.py --class1_dir data/healthy --class2_dir data/defective --save_dir models/vae
+python train_vae.py --image_dir data/images --labels_csv data/labels.csv --save_dir models/vae
 
 # 2. Train latent diffusion using the VAE run ID
-python train_diffuser.py --class1_dir data/healthy --class2_dir data/defective --save_dir models/vae --model_id 20250626-021325
+python train_diffuser.py --image_dir data/images --labels_csv data/labels.csv --save_dir models/vae --model_id 20250626-021325
 
 # 3. Generate synthetic pears
 python main.py --model_dir models/vae/20250626-021325 --save_dir outputs/generated --batch_size 2 --batches 3000
 
 # 4. Train classifier with real data and optional pseudo-labeled data
-python train_clf_3d.py --class0_dir data/healthy --class1_dir data/defective --unlabeled_dir outputs/generated --save_dir models/classifier
+python train_clf_3d.py --train_dir data/images --label_csv data/labels.csv --unlabeled_dir outputs/generated --save_dir models/classifier
 ```

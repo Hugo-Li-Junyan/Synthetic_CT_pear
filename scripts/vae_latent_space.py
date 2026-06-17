@@ -3,7 +3,7 @@ import nibabel as nib
 import numpy as np
 import warnings
 import torch
-from component import TwoClassDataset
+from component import CsvVolumeDataset
 import matplotlib.pyplot as plt
 from torch.utils.data import DataLoader
 from sklearn.manifold import TSNE
@@ -83,10 +83,16 @@ def visualize_umap(z, labels, pca_components=50):
     plt.show()
 
 
-def main(model_dir, healthy_dir, defective_dir, method='tsne', sample_size=64, pca_components=None):
+def main(model_dir, image_dir, labels_csv, filename_column="filename", label_column="label",
+         method='tsne', sample_size=64, pca_components=None):
     device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
     print('Using', 'GPU' if torch.cuda.is_available() else 'CPU')
-    dataset = TwoClassDataset(healthy_dir, defective_dir)
+    dataset = CsvVolumeDataset(
+        image_dir,
+        labels_csv,
+        filename_column=filename_column,
+        label_column=label_column,
+    )
     # load VAE
     vae = load_vae(model_dir, device)
     for param in vae.parameters():
@@ -169,6 +175,6 @@ def main(model_dir, healthy_dir, defective_dir, method='tsne', sample_size=64, p
 if __name__ == "__main__":
     # load vae model
     model_dir = r"J:\SET-Mebios_CFD-VIS-DI0327\HugoLi\PomestoreID\Pear\for_training\model\20250626-021325"
-    healthy_dir = r"J:\SET-Mebios_CFD-VIS-DI0327\HugoLi\PomestoreID\Pear\for_training\healthy"
-    defective_dir = r"J:\SET-Mebios_CFD-VIS-DI0327\HugoLi\PomestoreID\Pear\for_training\defective"
-    main(model_dir, healthy_dir, defective_dir, method='volume', sample_size=1)
+    image_dir = r"J:\SET-Mebios_CFD-VIS-DI0327\HugoLi\PomestoreID\Pear\for_training"
+    labels_csv = r"J:\SET-Mebios_CFD-VIS-DI0327\HugoLi\PomestoreID\Pear\for_training\labels.csv"
+    main(model_dir, image_dir, labels_csv, method='volume', sample_size=1)

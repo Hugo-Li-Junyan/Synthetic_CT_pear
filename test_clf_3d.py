@@ -1,52 +1,12 @@
 import argparse
 import csv
-from pathlib import Path
 
 import torch
 import torch.nn as nn
-from torch.utils.data import Dataset
 from tqdm import tqdm
 
+from component.dataset import CsvVolumeDataset
 from train_clf_3d import ResNet3D, make_loader, rounded_predictions, run_epoch
-from utils.volumes import load_nifti, volume_to_tensor
-
-
-class CsvRegressionDataset(Dataset):
-    def __init__(self, image_dir, csv_path, filename_column="filename", label_column="label"):
-        self.image_dir = Path(image_dir)
-        self.samples = self._read_samples(csv_path, filename_column, label_column)
-        if not self.samples:
-            raise ValueError(f"No labeled samples found in CSV: {csv_path}")
-
-    def _read_samples(self, csv_path, filename_column, label_column):
-        samples = []
-        with open(csv_path, newline="") as file:
-            reader = csv.DictReader(file)
-            if reader.fieldnames is None:
-                raise ValueError(f"CSV has no header row: {csv_path}")
-            if filename_column not in reader.fieldnames:
-                raise ValueError(f"CSV is missing filename column: {filename_column}")
-            if label_column not in reader.fieldnames:
-                raise ValueError(f"CSV is missing label column: {label_column}")
-
-            for row in reader:
-                filename = row[filename_column].strip()
-                label = float(row[label_column])
-                if label not in (0.0, 1.0, 2.0, 3.0):
-                    raise ValueError(f"Label must be one of 0, 1, 2, 3 for {filename}; got {label}")
-                path = self.image_dir / filename
-                if not path.exists():
-                    raise FileNotFoundError(f"CSV sample does not exist: {path}")
-                samples.append((path, label))
-        return samples
-
-    def __len__(self):
-        return len(self.samples)
-
-    def __getitem__(self, idx):
-        path, label = self.samples[idx]
-        volume = volume_to_tensor(load_nifti(path))
-        return volume, torch.tensor(label, dtype=torch.float32)
 
 
 def checkpoint_args(checkpoint):
@@ -94,11 +54,13 @@ def test(args):
     model = ResNet3D(**model_kwargs).to(device)
     model.load_state_dict(checkpoint["model_state_dict"])
 
-    dataset = CsvRegressionDataset(
+    dataset = CsvVolumeDataset(
         args.test_dir,
         args.test_csv,
         filename_column=args.filename_column,
         label_column=args.label_column,
+        label_dtype=torch.float32,
+        allowed_labels=range(args.min_label, args.max_label + 1),
     )
     loader = make_loader(dataset, args.batch_size, False, args.num_workers, device)
     criterion = nn.SmoothL1Loss() if args.loss == "smooth_l1" else nn.MSELoss()

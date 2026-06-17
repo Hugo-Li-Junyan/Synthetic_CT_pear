@@ -13,53 +13,9 @@ import torch.optim as optim
 from torch.utils.data import DataLoader, Dataset
 from tqdm import tqdm
 
+from component.dataset import CsvVolumeDataset
 from utils.splits import split_train_val
 from utils.volumes import list_nifti_files, load_nifti, volume_to_tensor
-
-
-class CsvRegressionDataset(Dataset):
-    def __init__(self, image_dir, csv_path, filename_column="filename", label_column="label", transform=None):
-        self.image_dir = Path(image_dir)
-        self.samples = self._read_samples(csv_path, filename_column, label_column)
-        self.transform = transform
-        if not self.samples:
-            raise ValueError(f"No labeled samples found in CSV: {csv_path}")
-
-    def _read_samples(self, csv_path, filename_column, label_column):
-        samples = []
-        valid_files = {path.name: path for path in list_nifti_files(self.image_dir)}
-        if not valid_files:
-            raise ValueError(f"No NIfTI files found in training folder: {self.image_dir}")
-
-        with open(csv_path, newline="") as file:
-            reader = csv.DictReader(file)
-            if reader.fieldnames is None:
-                raise ValueError(f"CSV has no header row: {csv_path}")
-            if filename_column not in reader.fieldnames:
-                raise ValueError(f"CSV is missing filename column: {filename_column}")
-            if label_column not in reader.fieldnames:
-                raise ValueError(f"CSV is missing label column: {label_column}")
-
-            for row in reader:
-                filename = row[filename_column].strip()
-                if filename not in valid_files:
-                    path = self.image_dir / filename
-                    raise FileNotFoundError(f"CSV sample does not exist or is not a NIfTI file: {path}")
-                label = float(row[label_column])
-                if label not in (0.0, 1.0, 2.0, 3.0):
-                    raise ValueError(f"Label must be one of 0, 1, 2, 3 for {filename}; got {label}")
-                samples.append((valid_files[filename], label))
-        return samples
-
-    def __len__(self):
-        return len(self.samples)
-
-    def __getitem__(self, idx):
-        path, label = self.samples[idx]
-        volume = volume_to_tensor(load_nifti(path))
-        if self.transform:
-            volume = self.transform(volume)
-        return volume, torch.tensor(label, dtype=torch.float32)
 
 
 class UnlabeledVolumeDataset(Dataset):
@@ -266,12 +222,14 @@ def train(args):
     os.makedirs(args.save_dir, exist_ok=True)
 
     transform = build_transform(args.augment)
-    dataset = CsvRegressionDataset(
+    dataset = CsvVolumeDataset(
         args.train_dir,
         args.label_csv,
         filename_column=args.filename_column,
         label_column=args.label_column,
         transform=transform,
+        label_dtype=torch.float32,
+        allowed_labels=range(args.min_label, args.max_label + 1),
     )
     train_dataset, val_dataset = split_train_val(dataset, args.val_split, args.random_state)
     train_loader = make_loader(train_dataset, args.batch_size, True, args.num_workers, device)

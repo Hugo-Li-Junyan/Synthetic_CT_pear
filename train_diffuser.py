@@ -5,7 +5,7 @@ import torchio as tio
 import torch.optim.lr_scheduler as lr_scheduler
 from torch.utils.data import DataLoader
 import torch.optim as optim
-from component import VAE, TwoClassDataset, LatentDiffusion
+from component import VAE, CsvVolumeDataset, LatentDiffusion
 import os
 import csv
 from utils.splits import split_train_val
@@ -167,9 +167,11 @@ def train(dataset, vae, diffuser, model_dir, lr, epochs, batch_size, val_split=0
 
 def main():
     parser = argparse.ArgumentParser(description="Train diffusion model")
-    # dir parser
-    parser.add_argument("--class1_dir", type=str, required=True, help="dir for healthy class")
-    parser.add_argument("--class2_dir", type=str, required=True, help="dir for defective class")
+    # dataset parser
+    parser.add_argument("--image_dir", type=str, required=True, help="folder containing labeled NIfTI volumes")
+    parser.add_argument("--labels_csv", type=str, required=True, help="CSV containing filenames and labels")
+    parser.add_argument("--filename_column", type=str, default="filename", help="CSV filename column")
+    parser.add_argument("--label_column", type=str, default="label", help="CSV label column")
     parser.add_argument("--save_dir", type=str, required=True, help="dir for model saving")
     parser.add_argument("--model_id", type=str, required=True, help="model_id")
 
@@ -195,7 +197,13 @@ def main():
             isotropic=True
         )
     ])
-    dataset = TwoClassDataset(args.class1_dir, args.class2_dir, transform=transform)
+    dataset = CsvVolumeDataset(
+        args.image_dir,
+        args.labels_csv,
+        filename_column=args.filename_column,
+        label_column=args.label_column,
+        transform=transform,
+    )
     model_dir = os.path.join(args.save_dir, args.model_id)
     vae = VAE(input_shape=(1, 128, 128, 128),
               featuremap_size=args.vae_featuremap_size,

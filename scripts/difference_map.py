@@ -4,20 +4,25 @@ import numpy as np
 import nibabel as nib
 from utils.load_models import load_vae
 import matplotlib.pyplot as plt
-from component import TwoClassDataset
-from torch.utils.data import DataLoader, random_split
+from component import CsvVolumeDataset
+from torch.utils.data import DataLoader
+from utils.splits import split_train_val
 
 
-def main(model_dir, healthy_dir, defective_dir, max_size=6, val_split=0.1):
+def main(model_dir, image_dir, labels_csv, filename_column="filename", label_column="label", max_size=6, val_split=0.1):
     # load VAE
     vae, random_state = load_vae(model_dir, 'cpu', with_rand_state=True)
     vae.eval()
     for param in vae.parameters():
         param.requires_grad = False
 
-    dataset = TwoClassDataset(healthy_dir, defective_dir)
-    generator = torch.Generator().manual_seed(random_state)
-    _, val_dataset = random_split(dataset, [1 - val_split, val_split], generator=generator)
+    dataset = CsvVolumeDataset(
+        image_dir,
+        labels_csv,
+        filename_column=filename_column,
+        label_column=label_column,
+    )
+    _, val_dataset = split_train_val(dataset, val_split, random_state)
     val_loader = DataLoader(val_dataset, batch_size=1, shuffle=True)
 
     fig, axes = plt.subplots(nrows=max_size, ncols=6, figsize=(12, 15))
@@ -77,7 +82,7 @@ def main(model_dir, healthy_dir, defective_dir, max_size=6, val_split=0.1):
 
 if __name__ == "__main__":
     model_dir = r"J:\SET-Mebios_CFD-VIS-DI0327\HugoLi\PomestoreID\Pear\for_training\model\20250926-120749"
-    healthy_dir = r"J:\SET-Mebios_CFD-VIS-DI0327\HugoLi\PomestoreID\Pear\for_training\healthy"
-    defective_dir = r"J:\SET-Mebios_CFD-VIS-DI0327\HugoLi\PomestoreID\Pear\for_training\defective"
+    image_dir = r"J:\SET-Mebios_CFD-VIS-DI0327\HugoLi\PomestoreID\Pear\for_training"
+    labels_csv = r"J:\SET-Mebios_CFD-VIS-DI0327\HugoLi\PomestoreID\Pear\for_training\labels.csv"
 
-    main(model_dir, healthy_dir, defective_dir)
+    main(model_dir, image_dir, labels_csv)

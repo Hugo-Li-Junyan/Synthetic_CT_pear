@@ -4,7 +4,7 @@ Sun, L., Chen, J., Xu, Y., Gong, M., Yu, K., & Batmanghelich, K. (2022). Hierarc
 """
 
 import os
-from component.dataset import TwoClassDataset, OneClassDataset
+from component.dataset import CsvVolumeDataset, OneClassDataset
 import torch
 from torch import nn
 import torch.nn.functional as F
@@ -290,14 +290,21 @@ def post_process(act):
 def interpolate_3d(img):
     return F.interpolate(img, size=(256,256,256), mode='trilinear', align_corners=False)
 
-def calculate_fid_real(pretrained_resnet, healthy, defective, fake, batch_size):
+def calculate_fid_real(pretrained_resnet, image_dir, labels_csv, fake, batch_size,
+                       filename_column="filename", label_column="label"):
     """Calculates the FID of two paths"""
     if os.path.exists('act_real.npy'):
         act_real = np.load('act_real.npy')
     else:
         model = get_feature_extractor(pretrained_resnet)
         #dataset = COPD_dataset(img_size=args.img_size, stage="train", fold=args.fold, threshold=600)
-        dataset_real = TwoClassDataset(healthy, defective, transform=interpolate_3d)
+        dataset_real = CsvVolumeDataset(
+            image_dir,
+            labels_csv,
+            filename_column=filename_column,
+            label_column=label_column,
+            transform=interpolate_3d,
+        )
         num_samples_real = len(dataset_real)
         data_loader_real = torch.utils.data.DataLoader(dataset_real, batch_size=batch_size,drop_last=False,shuffle=False)
         act_real = get_activations_from_dataloader(model, data_loader_real, num_samples_real, batch_size)

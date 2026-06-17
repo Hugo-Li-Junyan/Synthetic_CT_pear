@@ -5,7 +5,7 @@ import torch.optim as optim
 from torch.utils.data import DataLoader
 import time
 import os
-from component.dataset import TwoClassDataset
+from component.dataset import CsvVolumeDataset
 import torch
 import csv
 from component.vae import VAE
@@ -231,9 +231,11 @@ def train(dataset, vae, save_dir, gan=None, vae_lr=1e-4, gan_lr=1e-4, epochs=500
 
 def main():
     parser = argparse.ArgumentParser(description="Train Adversarial VAE model")
-    # dir parser
-    parser.add_argument("--class1_dir", type=str, required=True, help="dir for healthy class")
-    parser.add_argument("--class2_dir", type=str, required=True, help="dir for defective class")
+    # dataset parser
+    parser.add_argument("--image_dir", type=str, required=True, help="folder containing labeled NIfTI volumes")
+    parser.add_argument("--labels_csv", type=str, required=True, help="CSV containing filenames and labels")
+    parser.add_argument("--filename_column", type=str, default="filename", help="CSV filename column")
+    parser.add_argument("--label_column", type=str, default="label", help="CSV label column")
     parser.add_argument("--save_dir", type=str, required=True, help="dir for model saving")
 
     # VAE parser
@@ -263,7 +265,13 @@ def main():
             isotropic=True
         )
     ])
-    dataset = TwoClassDataset(args.class1_dir, args.class2_dir, transform=transform)
+    dataset = CsvVolumeDataset(
+        args.image_dir,
+        args.labels_csv,
+        filename_column=args.filename_column,
+        label_column=args.label_column,
+        transform=transform,
+    )
     input_shape = (1, 128, 128, 128)
     vae = VAE(input_shape=input_shape, featuremap_size=args.vae_featuremap_size, base_channel=args.vae_base_channel,
               flatten_latent_dim=None, with_residual=True)
