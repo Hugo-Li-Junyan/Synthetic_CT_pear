@@ -17,17 +17,19 @@ from utils.metrics import mae, ssim, psnr
 from utils.splits import split_train_val_test
 
 
-def train(dataset, vae, save_dir, gan, vae_lr=1e-4, gan_lr=1e-4, epochs=500, batch_size=8, val_split=0.1, test_split=0.1,
+def train(dataset, vae, save_dir, gan=None, vae_lr=1e-4, gan_lr=1e-4, epochs=500, batch_size=8, val_split=0.1, test_split=0.1,
           load_model_id=None, beta=1e-6, loss_criterion='MAE', random_state=42):
     # device ready
     device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
     print('Using', 'GPU' if torch.cuda.is_available() else 'CPU')
     vae = vae.to(device)
-    gan = gan.to(device)
+    use_gan = gan is not None
+    if use_gan:
+        gan = gan.to(device)
 
     # components ready
     vae_optimizer = optim.Adam(vae.parameters(), lr=vae_lr)
-    gan_optimizer = optim.Adam(gan.parameters(), betas=(0.5, 0.999), lr=gan_lr)
+    gan_optimizer = optim.Adam(gan.parameters(), betas=(0.5, 0.999), lr=gan_lr) if use_gan else None
 
     # load from checkpoint
     start_epoch = 0
@@ -37,9 +39,13 @@ def train(dataset, vae, save_dir, gan, vae_lr=1e-4, gan_lr=1e-4, epochs=500, bat
             checkpoint = torch.load(checkpoint_path, map_location='cuda')
             random_state = checkpoint['random_state']
             vae.load_state_dict(checkpoint['vae_state_dict'])
-            gan.load_state_dict(checkpoint['gan_state_dict'])
             vae_optimizer.load_state_dict(checkpoint['vae_optimizer_state_dict'])
-            gan_optimizer.load_state_dict(checkpoint['gan_optimizer_state_dict'])
+            if use_gan:
+                if 'gan_state_dict' in checkpoint and 'gan_optimizer_state_dict' in checkpoint:
+                    gan.load_state_dict(checkpoint['gan_state_dict'])
+                    gan_optimizer.load_state_dict(checkpoint['gan_optimizer_state_dict'])
+                else:
+                    warnings.warn("checkpoint does not contain GAN state, starting GAN from scratch")
             start_epoch = checkpoint['epoch']
             print(f"Loaded model from {checkpoint_path}")
             del checkpoint
@@ -58,13 +64,15 @@ def train(dataset, vae, save_dir, gan, vae_lr=1e-4, gan_lr=1e-4, epochs=500, bat
     test_loader = DataLoader(test_dataset, batch_size=batch_size, shuffle=False, pin_memory=True)
 
     # training settings
-    hyperparameters = {'model': 'VAE-GAN', 'vae_latent_space': vae.latent_space,
+    hyperparameters = {'model': 'VAE-GAN' if use_gan else 'VAE', 'use_gan': use_gan,
+                       'vae_latent_space': vae.latent_space,
                        'vae_featuremap_size': vae.featuremap_size, 'vae_base_channel': vae.base_channel,
                        'vae_use_residual': vae.with_residual, 'vae learning rate': vae_lr, 'loss_fn': loss_criterion,
-                       'epochs': epochs, 'batch_size': batch_size, 'beta': beta, 'vae_optimizer': 'Adam',
-                       'gan_optimizer': 'Adam', 'gan learning rate': gan_lr, 'gamma': 0.01,
-                       'gan_patch_size': gan.patch_size, 'gan_base_channel': gan.base_channel,
-                       'gan_with_residual': gan.with_residual, 'gan_weight_function': gan.weight_fn}
+                       'epochs': epochs, 'batch_size': batch_size, 'beta': beta, 'vae_optimizer': 'Adam'}
+    if use_gan:
+        hyperparameters.update({'gan_optimizer': 'Adam', 'gan learning rate': gan_lr, 'gamma': 0.01,
+                                'gan_patch_size': gan.patch_size, 'gan_base_channel': gan.base_channel,
+                                'gan_with_residual': gan.with_residual, 'gan_weight_function': gan.weight_fn})
 
     # for saving
     os.makedirs(save_dir, exist_ok=True)
@@ -99,25 +107,27 @@ def train(dataset, vae, save_dir, gan, vae_lr=1e-4, gan_lr=1e-4, epochs=500, bat
 
             reconstructed_x, z_mean, z_logvar = vae(x)
 
-            # train gan
-            gan.train()
-            for param in gan.parameters():
-                param.requires_grad = True
-            gan_loss = gan.loss_function(x, reconstructed_x.detach())
-            gan_optimizer.zero_grad()
-            gan_loss.backward()
-            torch.nn.utils.clip_grad_norm_(gan.parameters(), 1.0)
-            gan_optimizer.step()
+            if use_gan:
+                # train gan
+                gan.train()
+                for param in gan.parameters():
+                    param.requires_grad = True
+                gan_loss = gan.loss_function(x, reconstructed_x.detach())
+                gan_optimizer.zero_grad()
+                gan_loss.backward()
+                torch.nn.utils.clip_grad_norm_(gan.parameters(), 1.0)
+                gan_optimizer.step()
 
             # train vae
-            gan.eval()
-            for param in gan.parameters():
-                param.requires_grad = False
             recon_loss, kl_loss = vae.loss_function(reconstructed_x, x, z_mean, z_logvar, beta=beta,
                                                     criterion=loss_criterion)
             vae_loss = recon_loss + kl_loss
-            adv_loss = gan.adversarial_loss(x, reconstructed_x)
-            vae_loss = vae_loss + adv_loss * 0.01
+            if use_gan:
+                gan.eval()
+                for param in gan.parameters():
+                    param.requires_grad = False
+                adv_loss = gan.adversarial_loss(x, reconstructed_x)
+                vae_loss = vae_loss + adv_loss * 0.01
             vae_optimizer.zero_grad()
             vae_loss.backward()
             torch.nn.utils.clip_grad_norm_(vae.parameters(), 1.0)
@@ -126,8 +136,9 @@ def train(dataset, vae, save_dir, gan, vae_lr=1e-4, gan_lr=1e-4, epochs=500, bat
             train_recon_loss += recon_loss.item() * x.size(0)
             train_kl_loss += kl_loss.item() * x.size(0)
 
-            train_adv_loss += adv_loss.item() * x.size(0)
-            train_gan_loss += gan_loss.item() * x.size(0)
+            if use_gan:
+                train_adv_loss += adv_loss.item() * x.size(0)
+                train_gan_loss += gan_loss.item() * x.size(0)
         train_recon_loss /= train_size
         train_kl_loss /= train_size
         train_adv_loss /= train_size
@@ -135,7 +146,8 @@ def train(dataset, vae, save_dir, gan, vae_lr=1e-4, gan_lr=1e-4, epochs=500, bat
 
         # validation
         vae.eval()
-        gan.eval()
+        if use_gan:
+            gan.eval()
         val_recon_loss, val_kl_loss = 0.0, 0.0
         val_adv_loss, val_gan_loss = 0.0, 0.0
 
@@ -145,13 +157,14 @@ def train(dataset, vae, save_dir, gan, vae_lr=1e-4, gan_lr=1e-4, epochs=500, bat
                 x = x.to(device)
                 reconstructed_x, z_mean, z_logvar = vae(x)
                 recon_loss, kl_loss = vae.loss_function(reconstructed_x, x, z_mean, z_logvar, beta=beta, criterion=loss_criterion)
-                adv_loss = gan.adversarial_loss(x, reconstructed_x)
-                gan_loss = gan.loss_function(x, reconstructed_x)
 
                 val_recon_loss += recon_loss.item() * x.size(0)
                 val_kl_loss += kl_loss.item() * x.size(0)
-                val_adv_loss += adv_loss.item() * x.size(0)
-                val_gan_loss += gan_loss.item() * x.size(0)
+                if use_gan:
+                    adv_loss = gan.adversarial_loss(x, reconstructed_x)
+                    gan_loss = gan.loss_function(x, reconstructed_x)
+                    val_adv_loss += adv_loss.item() * x.size(0)
+                    val_gan_loss += gan_loss.item() * x.size(0)
         val_recon_loss /= val_size
         val_kl_loss /= val_size
         val_adv_loss /= val_size
@@ -174,20 +187,24 @@ def train(dataset, vae, save_dir, gan, vae_lr=1e-4, gan_lr=1e-4, epochs=500, bat
             checkpoint_info = {'epoch': epoch+1,
                                'random_state': random_state,
                                'vae_state_dict': vae.state_dict(),
-                               'gan_state_dict': gan.state_dict(),
                                'vae_optimizer_state_dict': vae_optimizer.state_dict(),
-                               'gan_optimizer_state_dict': gan_optimizer.state_dict()
+                               'use_gan': use_gan
                                }
+            if use_gan:
+                checkpoint_info.update({'gan_state_dict': gan.state_dict(),
+                                        'gan_optimizer_state_dict': gan_optimizer.state_dict()})
             torch.save(checkpoint_info, checkpoint_path)
         # save best model
         if val_recon_loss < best_val_score:
             checkpoint_info = {'epoch': epoch+1,
                                'random_state': random_state,
                                'vae_state_dict': vae.state_dict(),
-                               'gan_state_dict': gan.state_dict(),
                                'vae_optimizer_state_dict': vae_optimizer.state_dict(),
-                               'gan_optimizer_state_dict': gan_optimizer.state_dict()
+                               'use_gan': use_gan
                                }
+            if use_gan:
+                checkpoint_info.update({'gan_state_dict': gan.state_dict(),
+                                        'gan_optimizer_state_dict': gan_optimizer.state_dict()})
             torch.save(checkpoint_info, best_model_path)
             best_val_score = val_recon_loss
             early_stop_count = 0
@@ -223,6 +240,7 @@ def main():
     parser.add_argument("--vae_featuremap_size", type=int, default=32, help="VAE featuremap size")
     parser.add_argument("--vae_base_channel", type=int, default=256, help="VAE base channel")
     # GAN parser
+    parser.add_argument("--disable_gan", action="store_true", help="train only the VAE without GAN/adversarial losses")
     parser.add_argument("--gan_patch_size", type=int, default=16, help="GAN featuremap size")
     parser.add_argument("--gan_base_channel", type=int, default=16, help="GAN base channel")
     parser.add_argument("--gan_weight_fn", type=str, default='weighted', help="GAN weight fn")
@@ -249,8 +267,9 @@ def main():
     input_shape = (1, 128, 128, 128)
     vae = VAE(input_shape=input_shape, featuremap_size=args.vae_featuremap_size, base_channel=args.vae_base_channel,
               flatten_latent_dim=None, with_residual=True)
-    gan = PatchGAN(input_shape, patch_size=args.gan_patch_size, base_channel=args.gan_base_channel,
-                   with_residual=True, weight_fn=args.gan_weight_fn)
+    gan = None if args.disable_gan else PatchGAN(input_shape, patch_size=args.gan_patch_size,
+                                                 base_channel=args.gan_base_channel, with_residual=True,
+                                                 weight_fn=args.gan_weight_fn)
 
     train(dataset, vae=vae, save_dir=args.save_dir, gan=gan, vae_lr=args.vae_lr, gan_lr=args.gan_lr, epochs=args.epochs,
           batch_size=args.batch_size, val_split=0.1, beta=args.beta, loss_criterion=args.loss_criterion, random_state=args.random_state, load_model_id=args.load_model_id)
