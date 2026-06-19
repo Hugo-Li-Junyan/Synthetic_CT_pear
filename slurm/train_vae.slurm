@@ -19,7 +19,7 @@ source /data/leuven/362/vsc36240/miniconda3_wice/etc/profile.d/conda.sh
 conda activate base
 cd /data/leuven/362/vsc36240/project/synthetic_data/Synthetic_CT_pear
 # Run your script with parameters
-python ./train_vae.py --image_dir ../images --labels_csv ../labels.csv --label_column browning --save_dir ../model/beta1nogan --vae_base_channel 256  --random_state 369  --disable_gan --beta 1
+python ./train_vae.py --image_dir ../images --labels_csv ../labels.csv --label_column browning --save_dir ../model/beta1nogan --vae_base_channel 256  --random_state 369  --disable_gan --beta 1e-3
 
 # Optional: deactivate conda env (not necessary, but clean)
 conda deactivate
