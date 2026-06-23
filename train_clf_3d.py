@@ -2,6 +2,7 @@ import argparse
 import csv
 import json
 import os
+import re
 import time
 from itertools import cycle
 from pathlib import Path
@@ -10,12 +11,14 @@ import numpy as np
 import torch
 import torch.nn as nn
 import torch.optim as optim
-from torch.utils.data import DataLoader, Dataset
+from torch.utils.data import DataLoader, Dataset, Subset
 from tqdm import tqdm
 
 from component.dataset import CsvVolumeDataset
-from utils.splits import split_train_val
 from utils.volumes import list_nifti_files, load_nifti, volume_to_tensor
+
+
+BATCH_NAME_RE = re.compile(r"^([A-O])\d+", re.IGNORECASE)
 
 
 class UnlabeledVolumeDataset(Dataset):
@@ -128,6 +131,83 @@ def make_loader(dataset, batch_size, shuffle, num_workers, device):
     )
 
 
+def batch_name_from_sample(sample_path):
+    match = BATCH_NAME_RE.match(Path(sample_path).name)
+    if match is None:
+        raise ValueError(
+            f"Could not parse batch name from {sample_path}. "
+            "Expected filenames like A30.nii with batch A-O followed by a number."
+        )
+    return match.group(1).upper()
+
+
+def split_counts(total, train_ratio=0.6, val_ratio=0.3, test_ratio=0.1):
+    if total < 3:
+        raise ValueError("Each batch needs at least 3 samples to create train, validation, and test splits")
+
+    test_count = max(1, int(round(total * test_ratio)))
+    val_count = max(1, int(round(total * val_ratio)))
+    train_count = total - val_count - test_count
+
+    while train_count < 1:
+        if val_count >= test_count and val_count > 1:
+            val_count -= 1
+        elif test_count > 1:
+            test_count -= 1
+        else:
+            raise ValueError("Could not create non-empty train, validation, and test splits")
+        train_count = total - val_count - test_count
+
+    return train_count, val_count, test_count
+
+
+def split_train_val_test_by_batch(dataset, random_state):
+    grouped_indices = {}
+    for index, (path, _label) in enumerate(dataset.samples):
+        grouped_indices.setdefault(batch_name_from_sample(path), []).append(index)
+
+    rng = np.random.default_rng(random_state)
+    split_indices = {"train": [], "val": [], "test": []}
+    split_summary = {}
+
+    for batch_name in sorted(grouped_indices):
+        indices = list(grouped_indices[batch_name])
+        rng.shuffle(indices)
+        train_count, val_count, test_count = split_counts(len(indices))
+
+        train_end = train_count
+        val_end = train_end + val_count
+        split_indices["train"].extend(indices[:train_end])
+        split_indices["val"].extend(indices[train_end:val_end])
+        split_indices["test"].extend(indices[val_end:val_end + test_count])
+        split_summary[batch_name] = {
+            "total": len(indices),
+            "train": train_count,
+            "val": val_count,
+            "test": test_count,
+        }
+
+    for split_name in split_indices:
+        split_indices[split_name].sort()
+
+    return (
+        Subset(dataset, split_indices["train"]),
+        Subset(dataset, split_indices["val"]),
+        Subset(dataset, split_indices["test"]),
+        split_summary,
+    )
+
+
+def save_split_manifest(path, dataset, split_datasets):
+    with open(path, "w", newline="") as file:
+        writer = csv.writer(file)
+        writer.writerow(["split", "filename", "label", "batch"])
+        for split_name, split_dataset in split_datasets.items():
+            for sample_index in split_dataset.indices:
+                sample_path, label = dataset.samples[sample_index]
+                writer.writerow([split_name, str(sample_path), label, batch_name_from_sample(sample_path)])
+
+
 def rounded_predictions(outputs, min_label=0, max_label=3):
     return outputs.view(-1).detach().round().clamp(min_label, max_label).long()
 
@@ -231,9 +311,20 @@ def train(args):
         label_dtype=torch.float32,
         allowed_labels=range(args.min_label, args.max_label + 1),
     )
-    train_dataset, val_dataset = split_train_val(dataset, args.val_split, args.random_state)
+    train_dataset, val_dataset, test_dataset, split_summary = split_train_val_test_by_batch(
+        dataset,
+        args.random_state,
+    )
     train_loader = make_loader(train_dataset, args.batch_size, True, args.num_workers, device)
     val_loader = make_loader(val_dataset, args.batch_size, False, args.num_workers, device)
+    test_loader = make_loader(test_dataset, args.batch_size, False, args.num_workers, device)
+
+    print("Batch-stratified split counts:")
+    for batch_name, counts in split_summary.items():
+        print(
+            f"  {batch_name}: total={counts['total']} "
+            f"train={counts['train']} val={counts['val']} test={counts['test']}"
+        )
 
     unlabeled_loader = None
     if args.unlabeled_dir:
@@ -249,6 +340,11 @@ def train(args):
     run_dir.mkdir(parents=True, exist_ok=True)
     with open(run_dir / "clf_3d_config.json", "w") as file:
         json.dump(vars(args), file, indent=4)
+    save_split_manifest(
+        run_dir / "clf_3d_split_manifest.csv",
+        dataset,
+        {"train": train_dataset, "val": val_dataset, "test": test_dataset},
+    )
 
     best_val_loss = np.inf
     epochs_without_improvement = 0
@@ -329,12 +425,32 @@ def train(args):
             )
             break
 
+    best_checkpoint_path = run_dir / "best.pth"
+    if best_checkpoint_path.exists():
+        checkpoint = torch.load(best_checkpoint_path, map_location=device)
+        model.load_state_dict(checkpoint["model_state_dict"])
+
+    test_metrics = run_epoch(
+        model,
+        test_loader,
+        criterion,
+        device,
+        amp=args.amp,
+        min_label=args.min_label,
+        max_label=args.max_label,
+    )
+    with open(run_dir / "clf_3d_test_metrics.json", "w") as file:
+        json.dump(test_metrics, file, indent=4)
+    print(
+        f"Test loss: {test_metrics['loss']:.4f} mae: {test_metrics['mae']:.4f} "
+        f"rounded acc: {test_metrics['rounded_accuracy']:.4f}"
+    )
     print(f"Training complete. Outputs saved in: {run_dir}")
 
 
 def parse_args():
     parser = argparse.ArgumentParser(description="Train a 3D ResNet regressor on NIfTI volumes with rounded 0-3 outputs")
-    parser.add_argument("--train_dir", type=str, required=True, help="folder containing all training NIfTI volumes")
+    parser.add_argument("--train_dir", type=str, required=True, help="folder containing all labeled NIfTI volumes")
     parser.add_argument("--label_csv", type=str, required=True, help="CSV with filename and target columns")
     parser.add_argument("--save_dir", type=str, required=True, help="directory for checkpoints and logs")
     parser.add_argument("--unlabeled_dir", type=str, default="", help="optional folder for regression pseudo-label training")
@@ -349,8 +465,7 @@ def parse_args():
     parser.add_argument("--batch_size", type=int, default=8, help="batch size for 128^3 volumes")
     parser.add_argument("--lr", type=float, default=1e-4, help="learning rate")
     parser.add_argument("--weight_decay", type=float, default=1e-4, help="AdamW weight decay")
-    parser.add_argument("--val_split", type=float, default=0.3, help="validation split ratio")
-    parser.add_argument("--random_state", type=int, default=42, help="random seed for train/validation split")
+    parser.add_argument("--random_state", type=int, default=42, help="random seed for batch-stratified train/val/test split")
     parser.add_argument("--num_workers", type=int, default=2, help="DataLoader workers")
     parser.add_argument("--pseudo_start_epoch", type=int, default=0, help="first epoch that uses pseudo labels")
     parser.add_argument("--pseudo_threshold", type=float, default=0.25, help="maximum distance from rounded label for pseudo labels")
