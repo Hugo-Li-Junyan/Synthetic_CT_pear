@@ -141,27 +141,33 @@ def batch_name_from_sample(sample_path):
     return match.group(1).upper()
 
 
-def split_counts(total, train_ratio=0.6, val_ratio=0.3, test_ratio=0.1):
+def test_split_count(total, test_ratio=0.1):
     if total < 3:
         raise ValueError("Each batch needs at least 3 samples to create train, validation, and test splits")
-
-    test_count = max(1, int(round(total * test_ratio)))
-    val_count = max(1, int(round(total * val_ratio)))
-    train_count = total - val_count - test_count
-
-    while train_count < 1:
-        if val_count >= test_count and val_count > 1:
-            val_count -= 1
-        elif test_count > 1:
-            test_count -= 1
-        else:
-            raise ValueError("Could not create non-empty train, validation, and test splits")
-        train_count = total - val_count - test_count
-
-    return train_count, val_count, test_count
+    return max(1, int(round(total * test_ratio)))
 
 
-def split_train_val_test_by_batch(dataset, random_state):
+def train_val_split_counts(total, train_ratio=0.6, val_ratio=0.3):
+    if total < 2:
+        raise ValueError("Selected train/validation data needs at least 2 samples per batch")
+
+    val_count = max(1, int(round(total * val_ratio / (train_ratio + val_ratio))))
+    train_count = total - val_count
+    if train_count < 1:
+        train_count = 1
+        val_count = total - train_count
+    if val_count < 1:
+        raise ValueError("Could not create non-empty train and validation splits")
+    return train_count, val_count
+
+
+def selected_train_val_count(available_count, fraction):
+    if not 0 < fraction <= 1:
+        raise ValueError(f"train_val_fraction must be > 0 and <= 1, got {fraction}")
+    return max(2, min(available_count, int(round(available_count * fraction))))
+
+
+def split_train_val_test_by_batch(dataset, random_state, train_val_fraction=1.0):
     grouped_indices = {}
     for index, (path, _label) in enumerate(dataset.samples):
         grouped_indices.setdefault(batch_name_from_sample(path), []).append(index)
@@ -173,15 +179,24 @@ def split_train_val_test_by_batch(dataset, random_state):
     for batch_name in sorted(grouped_indices):
         indices = list(grouped_indices[batch_name])
         rng.shuffle(indices)
-        train_count, val_count, test_count = split_counts(len(indices))
+
+        test_count = test_split_count(len(indices))
+        test_indices = indices[:test_count]
+        train_val_pool = indices[test_count:]
+        train_val_count = selected_train_val_count(len(train_val_pool), train_val_fraction)
+        selected_train_val_indices = train_val_pool[:train_val_count]
+        unused_count = len(train_val_pool) - train_val_count
+        train_count, val_count = train_val_split_counts(train_val_count)
 
         train_end = train_count
-        val_end = train_end + val_count
-        split_indices["train"].extend(indices[:train_end])
-        split_indices["val"].extend(indices[train_end:val_end])
-        split_indices["test"].extend(indices[val_end:val_end + test_count])
+        split_indices["test"].extend(test_indices)
+        split_indices["train"].extend(selected_train_val_indices[:train_end])
+        split_indices["val"].extend(selected_train_val_indices[train_end:train_end + val_count])
         split_summary[batch_name] = {
             "total": len(indices),
+            "train_val_pool": len(train_val_pool),
+            "train_val_selected": train_val_count,
+            "unused": unused_count,
             "train": train_count,
             "val": val_count,
             "test": test_count,
@@ -314,6 +329,7 @@ def train(args):
     train_dataset, val_dataset, test_dataset, split_summary = split_train_val_test_by_batch(
         dataset,
         args.random_state,
+        train_val_fraction=args.train_val_fraction,
     )
     train_loader = make_loader(train_dataset, args.batch_size, True, args.num_workers, device)
     val_loader = make_loader(val_dataset, args.batch_size, False, args.num_workers, device)
@@ -323,7 +339,9 @@ def train(args):
     for batch_name, counts in split_summary.items():
         print(
             f"  {batch_name}: total={counts['total']} "
-            f"train={counts['train']} val={counts['val']} test={counts['test']}"
+            f"train_val_selected={counts['train_val_selected']}/{counts['train_val_pool']} "
+            f"train={counts['train']} val={counts['val']} test={counts['test']} "
+            f"unused={counts['unused']}"
         )
 
     unlabeled_loader = None
@@ -466,6 +484,7 @@ def parse_args():
     parser.add_argument("--lr", type=float, default=1e-4, help="learning rate")
     parser.add_argument("--weight_decay", type=float, default=1e-4, help="AdamW weight decay")
     parser.add_argument("--random_state", type=int, default=42, help="random seed for batch-stratified train/val/test split")
+    parser.add_argument("--train_val_fraction", type=float, default=1.0, help="fraction of each batch's post-test-holdout data to use for train/validation")
     parser.add_argument("--num_workers", type=int, default=2, help="DataLoader workers")
     parser.add_argument("--pseudo_start_epoch", type=int, default=0, help="first epoch that uses pseudo labels")
     parser.add_argument("--pseudo_threshold", type=float, default=0.25, help="maximum distance from rounded label for pseudo labels")
