@@ -56,7 +56,7 @@ class CsvVolumeDataset(Dataset):
                 if not path.is_absolute():
                     path = self.image_dir / path
                 if not path.exists():
-                    raise FileNotFoundError(f"CSV sample does not exist: {path}")
+                    continue
                 label = float(row[label_column])
                 if self.allowed_labels is not None and label not in self.allowed_labels:
                     raise ValueError(f"Label must be one of {sorted(self.allowed_labels)} for {filename}; got {label}")
