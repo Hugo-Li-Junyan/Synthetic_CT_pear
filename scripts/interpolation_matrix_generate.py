@@ -1,12 +1,11 @@
-import numpy as np
 import torch
 from component import VAE
 import os
-import nibabel as nib
 from component import LatentDiffusion
 import json
 from interpolation_line import interpolate_latents, compute_z
 from utils.load_models import load_vae, load_diffuser
+from utils.volumes import save_nifti, to_uint16
 
 
 def main(model_dir, save_dir, topleft_dir, lowerleft_dir, lowerright_dir, topright_dir,
@@ -47,14 +46,12 @@ def main(model_dir, save_dir, topleft_dir, lowerleft_dir, lowerright_dir, toprig
         row_generated_images = [vae.decode(latent).squeeze().cpu().numpy() for latent in row_interpolated]
 
         for i, arr in enumerate(row_generated_images):
-            arr = ((arr - np.min(arr)) / (np.max(arr) - np.min(arr)) * 255).astype(np.uint8)
-            img = nib.Nifti1Image(arr, np.eye(4))
-            nib.save(img, os.path.join(save_dir, f'{row}_{i}.nii'))
+            save_nifti(to_uint16(arr), os.path.join(save_dir, f'{row}_{i}.nii'))
     if with_original:
-        nib.save(nib.Nifti1Image(img_topleft, np.eye(4)),os.path.join(save_dir, 'topleft.nii'))
-        nib.save(nib.Nifti1Image(img_lowerleft, np.eye(4)), os.path.join(save_dir, 'lowerleft.nii'))
-        nib.save(nib.Nifti1Image(img_lowerright, np.eye(4)), os.path.join(save_dir, 'lowerright.nii'))
-        nib.save(nib.Nifti1Image(img_topright, np.eye(4)), os.path.join(save_dir, 'topright.nii'))
+        save_nifti(to_uint16(img_topleft), os.path.join(save_dir, 'topleft.nii'))
+        save_nifti(to_uint16(img_lowerleft), os.path.join(save_dir, 'lowerleft.nii'))
+        save_nifti(to_uint16(img_lowerright), os.path.join(save_dir, 'lowerright.nii'))
+        save_nifti(to_uint16(img_topright), os.path.join(save_dir, 'topright.nii'))
 
 if __name__ == "__main__":
     # load vae model
@@ -67,3 +64,5 @@ if __name__ == "__main__":
 
     # Create dataset instance
     main(model_dir, save_dir, topleft_dir, lowerleft_dir, lowerright_dir, topright_dir, interpolation='slerp', with_original=False, diffusion=False)
+
+

@@ -40,8 +40,10 @@ def volume_to_tensor(volume):
     return torch.tensor(volume, dtype=torch.float32).unsqueeze(0)
 
 
-def to_uint8(volume):
-    return (normalize_minmax(volume) * 255).astype(np.uint8)
+
+
+def to_uint16(volume):
+    return (normalize_minmax(volume) * 65535).astype(np.uint16)
 
 
 def save_nifti(volume, path, affine=None):
@@ -50,3 +52,5 @@ def save_nifti(volume, path, affine=None):
     if affine is None:
         affine = np.eye(4)
     nib.save(nib.Nifti1Image(volume, affine), str(path))
+
+

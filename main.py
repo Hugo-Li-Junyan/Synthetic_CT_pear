@@ -3,7 +3,7 @@ import torch
 import os
 from utils.load_models import load_vae, load_diffuser
 from tqdm import tqdm
-from utils.volumes import save_nifti, to_uint8
+from utils.volumes import save_nifti, to_uint16
 
 
 def vae_generate(model_dir, save_dir, batch_size:int=2, batches:int=16):
@@ -31,7 +31,7 @@ def vae_generate(model_dir, save_dir, batch_size:int=2, batches:int=16):
             z = diffuser.denoise(z, steps=200)
             arr = vae.decode(z).squeeze().cpu().numpy()
             for i in range(batch_size):
-                img = to_uint8(arr[i, :, :, :])
+                img = to_uint16(arr[i, :, :, :])
                 save_nifti(img, os.path.join(save_dir, f'{count}.nii'))
                 count += 1
 
@@ -48,3 +48,4 @@ def main():
 
 if __name__ == "__main__":
     main()
+

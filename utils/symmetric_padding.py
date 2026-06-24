@@ -2,6 +2,7 @@ import os
 import numpy as np
 from scipy.ndimage import zoom
 import nibabel as nib
+from utils.volumes import save_nifti, to_uint16
 
 
 def min_max_16bit_to_8bit(img):
@@ -56,8 +57,7 @@ def preprocess_folder(folder_path, output_path, new_size, compressed=False):
             sample_out_path = os.path.join(output_path, sample_name)
             if compressed:
                 sample_out_path+='.gz'
-            img = nib.Nifti1Image(sample_resized, np.eye(4))
-            nib.save(img, sample_out_path)
+            save_nifti(to_uint16(sample_resized), sample_out_path)
 
 
 
@@ -65,3 +65,4 @@ if __name__ == '__main__':
     path = r'D:\Hugo\synthetic_paper\test_from_storage_exp\volumes'
     out_path = r'D:\Hugo\synthetic_paper\test_from_storage_exp\padded_volumes'
     preprocess_folder(path, out_path, new_size=128)
+

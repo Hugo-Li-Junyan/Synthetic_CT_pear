@@ -1,6 +1,4 @@
 import os.path
-import nibabel as nib
-import numpy as np
 import warnings
 import torch
 from component import CsvVolumeDataset
@@ -11,6 +9,7 @@ import umap
 from sklearn.decomposition import PCA
 from utils.visualization import plot_volume
 from utils.load_models import load_vae, load_diffuser
+from utils.volumes import save_nifti, to_uint16
 
 
 def vae_latent(vae, dataset, sample_size, device):
@@ -121,9 +120,8 @@ def main(model_dir, image_dir, labels_csv, filename_column="filename", label_col
             ax.axis('off')
 
             #plot_volume(volume)
-            volume = ((volume - np.min(volume)) / (np.max(volume) - np.min(volume)) * 255).astype(np.uint8)
-            img = nib.Nifti1Image(volume, np.eye(4))
-            nib.save(img, os.path.join(model_dir, f'{step}.nii'))
+            volume = to_uint16(volume)
+            save_nifti(volume, os.path.join(model_dir, f'{step}.nii'))
         plt.tight_layout()
         plt.savefig("diffusion.png", bbox_inches='tight', pad_inches=0)
     else:
@@ -138,8 +136,7 @@ def main(model_dir, image_dir, labels_csv, filename_column="filename", label_col
             print(f'label is {labels[0]} (0 for healthy, 1 for defective)')
             volume = z[0, :, :, :, :].squeeze().cpu().numpy()
             #plot_volume(volume)
-            volume = ((volume - np.min(volume)) / (np.max(volume) - np.min(volume)) * 255).astype(np.uint8)
-            img = nib.Nifti1Image(volume, np.eye(4))
+            volume = to_uint16(volume)
             plt.axis('off')
             plt.imshow(volume[16, :, :], cmap='gray')
             plt.show()
@@ -151,11 +148,11 @@ def main(model_dir, image_dir, labels_csv, filename_column="filename", label_col
             plt.axis('off')
             plt.imshow(volume[:, :, 16], cmap='gray')
             plt.show()
-            nib.save(img, os.path.join(model_dir, 'latent.nii'))
+            save_nifti(volume, os.path.join(model_dir, 'latent.nii'))
 
             volume = x[0, :, :, :, :].squeeze().cpu().numpy()
             #plot_volume(volume)
-            volume = ((volume - np.min(volume)) / (np.max(volume) - np.min(volume)) * 255).astype(np.uint8)
+            volume = to_uint16(volume)
             plt.axis('off')
             plt.imshow(volume[64, :, :], cmap='gray')
             plt.show()
@@ -165,8 +162,7 @@ def main(model_dir, image_dir, labels_csv, filename_column="filename", label_col
             plt.axis('off')
             plt.imshow(volume[:, :, 64], cmap='gray')
             plt.show()
-            img = nib.Nifti1Image(volume, np.eye(4))
-            nib.save(img, os.path.join(model_dir, 'real.nii'))
+            save_nifti(volume, os.path.join(model_dir, 'real.nii'))
 
         else:
             raise ValueError('only tsne and umap are supported')
@@ -178,3 +174,5 @@ if __name__ == "__main__":
     image_dir = r"J:\SET-Mebios_CFD-VIS-DI0327\HugoLi\PomestoreID\Pear\for_training"
     labels_csv = r"J:\SET-Mebios_CFD-VIS-DI0327\HugoLi\PomestoreID\Pear\for_training\labels.csv"
     main(model_dir, image_dir, labels_csv, method='volume', sample_size=1)
+
+

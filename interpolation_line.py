@@ -3,7 +3,7 @@ import os
 from utils.load_models import load_vae, load_diffuser
 import matplotlib.pyplot as plt
 import argparse
-from utils.volumes import load_nifti, save_nifti, to_uint8
+from utils.volumes import load_nifti, save_nifti, to_uint16
 
 
 def linear(w,v0,v1):
@@ -125,7 +125,7 @@ def line_interpolate(model_dir, save_dir, healthy_dir, defective_dir, num_steps=
     plt.savefig("interpolation_line.png", bbox_inches='tight', pad_inches=0)
 
     for i, arr in enumerate(generated_images):
-        save_nifti(to_uint8(arr), os.path.join(save_dir, f'{i}.nii'))
+        save_nifti(to_uint16(arr), os.path.join(save_dir, f'{i}.nii'))
 
 def main():
     parser = argparse.ArgumentParser(description="line interpolation")
@@ -146,3 +146,4 @@ def main():
 
 if __name__ == "__main__":
     main()
+
