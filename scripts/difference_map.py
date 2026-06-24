@@ -9,7 +9,7 @@ from torch.utils.data import DataLoader
 from utils.splits import split_train_val
 
 
-def main(model_dir, image_dir, labels_csv, filename_column="filename", label_column="label", max_size=6, val_split=0.1):
+def main(model_dir, image_dir, labels_csv, filename_column="filename", label_column="cavity", max_size=6, val_split=0.1):
     # load VAE
     vae, random_state = load_vae(model_dir, 'cpu', with_rand_state=True)
     vae.eval()
@@ -81,8 +81,8 @@ def main(model_dir, image_dir, labels_csv, filename_column="filename", label_col
 
 
 if __name__ == "__main__":
-    model_dir = r"J:\SET-Mebios_CFD-VIS-DI0327\HugoLi\PomestoreID\Pear\for_training\model\20250926-120749"
-    image_dir = r"J:\SET-Mebios_CFD-VIS-DI0327\HugoLi\PomestoreID\Pear\for_training"
-    labels_csv = r"J:\SET-Mebios_CFD-VIS-DI0327\HugoLi\PomestoreID\Pear\for_training\labels.csv"
+    model_dir = r"D:\Hugo\synthetic_paper\synthetic_model\beta1e-3nogan"
+    image_dir = r"D:\Hugo\conference_feb2025\volumes"
+    labels_csv = r"D:\Hugo\conference_feb2025\labels.csv"
 
     main(model_dir, image_dir, labels_csv)
