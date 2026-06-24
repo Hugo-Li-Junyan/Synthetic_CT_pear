@@ -18,7 +18,7 @@ from utils.splits import split_train_val_test
 
 
 def train(dataset, vae, save_dir, gan=None, vae_lr=1e-4, gan_lr=1e-4, epochs=500, batch_size=8, val_split=0.1, test_split=0.1,
-          load_model_id=None, beta=1e-6, loss_criterion='MAE', random_state=42):
+          load_model_id=None, beta=1e-6, gamma=0.01, loss_criterion='MAE', random_state=42):
     # device ready
     device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
     print('Using', 'GPU' if torch.cuda.is_available() else 'CPU')
@@ -70,7 +70,7 @@ def train(dataset, vae, save_dir, gan=None, vae_lr=1e-4, gan_lr=1e-4, epochs=500
                        'vae_use_residual': vae.with_residual, 'vae learning rate': vae_lr, 'loss_fn': loss_criterion,
                        'epochs': epochs, 'batch_size': batch_size, 'beta': beta, 'vae_optimizer': 'Adam'}
     if use_gan:
-        hyperparameters.update({'gan_optimizer': 'Adam', 'gan learning rate': gan_lr, 'gamma': 0.01,
+        hyperparameters.update({'gan_optimizer': 'Adam', 'gan learning rate': gan_lr, 'gamma': gamma,
                                 'gan_patch_size': gan.patch_size, 'gan_base_channel': gan.base_channel,
                                 'gan_with_residual': gan.with_residual, 'gan_weight_function': gan.weight_fn})
 
@@ -127,7 +127,7 @@ def train(dataset, vae, save_dir, gan=None, vae_lr=1e-4, gan_lr=1e-4, epochs=500
                 for param in gan.parameters():
                     param.requires_grad = False
                 adv_loss = gan.adversarial_loss(x, reconstructed_x)
-                vae_loss = vae_loss + adv_loss * 0.01
+                vae_loss = vae_loss + adv_loss * gamma
             vae_optimizer.zero_grad()
             vae_loss.backward()
             torch.nn.utils.clip_grad_norm_(vae.parameters(), 1.0)
@@ -246,6 +246,7 @@ def main():
     parser.add_argument("--gan_patch_size", type=int, default=16, help="GAN featuremap size")
     parser.add_argument("--gan_base_channel", type=int, default=16, help="GAN base channel")
     parser.add_argument("--gan_weight_fn", type=str, default='weighted', help="GAN weight fn")
+    parser.add_argument("--gamma", type=float, default=0.01, help="weight of adversarial loss")
     # train parser
     parser.add_argument("--vae_lr", type=float, default=1e-4, help="vae learning rate")
     parser.add_argument("--gan_lr", type=float, default=1e-4, help="gan learning rate")
@@ -280,7 +281,8 @@ def main():
                                                  weight_fn=args.gan_weight_fn)
 
     train(dataset, vae=vae, save_dir=args.save_dir, gan=gan, vae_lr=args.vae_lr, gan_lr=args.gan_lr, epochs=args.epochs,
-          batch_size=args.batch_size, val_split=0.1, beta=args.beta, loss_criterion=args.loss_criterion, random_state=args.random_state, load_model_id=args.load_model_id)
+          batch_size=args.batch_size, val_split=0.1, beta=args.beta, gamma=args.gamma,
+          loss_criterion=args.loss_criterion, random_state=args.random_state, load_model_id=args.load_model_id)
 
 
 if __name__ == '__main__':
