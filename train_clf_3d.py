@@ -310,6 +310,7 @@ def run_epoch(
     unlabeled_loader=None,
     pseudo_weight=0.3,
     pseudo_threshold=0.25,
+    pseudo_steps_per_batch=1,
 ):
     is_train = optimizer is not None
     model.train(is_train)
@@ -331,21 +332,26 @@ def run_epoch(
                 loss = criterion(outputs, y.view(-1))
 
                 if unlabeled_iter is not None:
-                    x_unlabeled = next(unlabeled_iter).to(device, non_blocking=True)
-                    with torch.no_grad():
-                        pseudo_raw = model(x_unlabeled).view(-1)
-                        pseudo_targets = pseudo_targets_from_outputs(
-                            pseudo_raw,
-                            min_label=min_label,
-                            max_label=max_label,
-                        )
-                        distance_to_label = (pseudo_raw - pseudo_targets).abs()
-                        mask = distance_to_label <= pseudo_threshold
-                    if mask.any():
-                        pseudo_outputs = model(x_unlabeled[mask]).view(-1)
-                        loss = loss + pseudo_weight * criterion(pseudo_outputs, pseudo_targets[mask])
-                        pseudo_used += int(mask.sum().item())
-
+                    pseudo_loss = outputs.new_tensor(0.0)
+                    pseudo_steps_used = 0
+                    for _ in range(max(1, pseudo_steps_per_batch)):
+                        x_unlabeled = next(unlabeled_iter).to(device, non_blocking=True)
+                        with torch.no_grad():
+                            pseudo_raw = model(x_unlabeled).view(-1)
+                            pseudo_targets = pseudo_targets_from_outputs(
+                                pseudo_raw,
+                                min_label=min_label,
+                                max_label=max_label,
+                            )
+                            distance_to_label = (pseudo_raw - pseudo_targets).abs()
+                            mask = distance_to_label <= pseudo_threshold
+                        if mask.any():
+                            pseudo_outputs = model(x_unlabeled[mask]).view(-1)
+                            pseudo_loss = pseudo_loss + criterion(pseudo_outputs, pseudo_targets[mask])
+                            pseudo_steps_used += 1
+                            pseudo_used += int(mask.sum().item())
+                    if pseudo_steps_used > 0:
+                        loss = loss + pseudo_weight * pseudo_loss / pseudo_steps_used
             if is_train:
                 optimizer.zero_grad(set_to_none=True)
                 scaler.scale(loss).backward()
@@ -492,6 +498,7 @@ def train(args):
             unlabeled_loader=active_unlabeled_loader,
             pseudo_weight=args.pseudo_weight,
             pseudo_threshold=args.pseudo_threshold,
+            pseudo_steps_per_batch=args.pseudo_steps_per_batch,
         )
         val_metrics = run_epoch(
             model,
@@ -619,6 +626,7 @@ def parse_args():
     parser.add_argument("--pseudo_start_epoch", type=int, default=10, help="first epoch that uses pseudo labels")
     parser.add_argument("--pseudo_threshold", type=float, default=0.1, help="maximum distance from rounded label for pseudo labels")
     parser.add_argument("--pseudo_weight", type=float, default=0.3, help="loss weight for pseudo-labeled samples")
+    parser.add_argument("--pseudo_steps_per_batch", type=int, default=1, help="unlabeled batches to evaluate for each labeled batch")
     parser.add_argument("--early_stop_patience", type=int, default=20, help="epochs without validation loss improvement before stopping; set 0 to disable")
     parser.add_argument("--early_stop_min_delta", type=float, default=0.0, help="minimum validation loss drop counted as improvement")
     parser.add_argument("--augment", action="store_true", help="enable light 3D augmentation with torchio")
