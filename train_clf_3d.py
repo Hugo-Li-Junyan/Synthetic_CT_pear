@@ -299,6 +299,33 @@ def run_epoch(
         "pseudo_used": pseudo_used,
     }
 
+def confusion_matrix(model, loader, device, min_label=0, max_label=3, amp=False):
+    labels = list(range(min_label, max_label + 1))
+    matrix = torch.zeros((len(labels), len(labels)), dtype=torch.long)
+
+    model.eval()
+    with torch.no_grad():
+        for x, y in tqdm(loader, desc="Confusion", unit="batch"):
+            x = x.to(device, non_blocking=True)
+            y = y.to(device, non_blocking=True).float()
+
+            with torch.amp.autocast("cuda", enabled=amp and device.type == "cuda"):
+                outputs = model(x).view(-1)
+
+            preds = rounded_predictions(outputs, min_label=min_label, max_label=max_label).cpu()
+            targets = y.view(-1).round().clamp(min_label, max_label).long().cpu()
+            for target, pred in zip(targets, preds):
+                matrix[int(target.item()) - min_label, int(pred.item()) - min_label] += 1
+
+    return labels, matrix
+
+
+def save_confusion_matrix_csv(path, labels, matrix):
+    with open(path, "w", newline="") as file:
+        writer = csv.writer(file)
+        writer.writerow(["true\\pred", *labels])
+        for label, row in zip(labels, matrix.tolist()):
+            writer.writerow([label, *row])
 
 def save_checkpoint(path, model, optimizer, epoch, metrics, args):
     checkpoint = {
@@ -457,12 +484,32 @@ def train(args):
         min_label=args.min_label,
         max_label=args.max_label,
     )
+    test_labels, test_confusion_matrix = confusion_matrix(
+        model,
+        test_loader,
+        device,
+        min_label=args.min_label,
+        max_label=args.max_label,
+        amp=args.amp,
+    )
+    test_metrics_with_confusion = {
+        **test_metrics,
+        "confusion_labels": test_labels,
+        "confusion_matrix": test_confusion_matrix.tolist(),
+    }
     with open(run_dir / "clf_3d_test_metrics.json", "w") as file:
-        json.dump(test_metrics, file, indent=4)
+        json.dump(test_metrics_with_confusion, file, indent=4)
+    save_confusion_matrix_csv(
+        run_dir / "clf_3d_test_confusion_matrix.csv",
+        test_labels,
+        test_confusion_matrix,
+    )
     print(
         f"Test loss: {test_metrics['loss']:.4f} mae: {test_metrics['mae']:.4f} "
         f"rounded acc: {test_metrics['rounded_accuracy']:.4f}"
     )
+    print(f"Test confusion matrix rows=true labels, columns=rounded predictions {test_labels}:")
+    print(test_confusion_matrix.numpy())
     print(f"Training complete. Outputs saved in: {run_dir}")
 
 
@@ -499,3 +546,5 @@ def parse_args():
 
 if __name__ == "__main__":
     train(parse_args())
+
+
