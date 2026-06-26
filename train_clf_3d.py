@@ -67,7 +67,7 @@ class BasicBlock3D(nn.Module):
 
 
 class ResNet3D(nn.Module):
-    def __init__(self, block=BasicBlock3D, layers=(2, 2, 2, 2), output_size=1, base_channels=16, dropout=0.2):
+    def __init__(self, block=BasicBlock3D, layers=(2, 2, 2, 2), output_size=4, base_channels=16, dropout=0.2):
         super().__init__()
         self.in_channels = base_channels
         self.stem = nn.Sequential(
@@ -252,19 +252,8 @@ def print_label_counts(split_name, dataset, min_label, max_label):
     print(f"{split_name} label counts: {summary}")
 
 
-def initialize_regression_head_bias(model, train_dataset):
-    labels = labels_from_dataset(train_dataset)
-    if labels:
-        with torch.no_grad():
-            model.fc.bias.fill_(float(np.mean(labels)))
-
-def rounded_predictions(outputs, min_label=0, max_label=3):
-    return outputs.view(-1).detach().round().clamp(min_label, max_label).long()
-
-
-def pseudo_targets_from_outputs(outputs, min_label=0, max_label=3):
-    return outputs.view(-1).detach().round().clamp(min_label, max_label).float()
-
+def class_predictions(logits, min_label=0):
+    return logits.detach().argmax(dim=1).long() + min_label
 
 def run_epoch(
     model,
@@ -277,7 +266,7 @@ def run_epoch(
     max_label=3,
     unlabeled_loader=None,
     pseudo_weight=0.3,
-    pseudo_threshold=0.25,
+    pseudo_threshold=0.95,
     pseudo_steps_per_batch=1,
 ):
     is_train = optimizer is not None
@@ -286,40 +275,37 @@ def run_epoch(
     total_loss = 0.0
     correct = 0
     total = 0
-    mae_sum = 0.0
+    absolute_error_sum = 0.0
     pseudo_used = 0
     unlabeled_iter = cycle(unlabeled_loader) if is_train and unlabeled_loader is not None else None
 
     for x, y in tqdm(loader, desc="Train" if is_train else "Eval", unit="batch"):
         x = x.to(device, non_blocking=True)
-        y = y.to(device, non_blocking=True).float()
+        labels = y.to(device, non_blocking=True).long().view(-1)
+        targets = labels - min_label
 
         with torch.set_grad_enabled(is_train):
             with torch.amp.autocast("cuda", enabled=amp and device.type == "cuda"):
-                outputs = model(x).view(-1)
-                loss = criterion(outputs, y.view(-1))
+                logits = model(x)
+                loss = criterion(logits, targets)
 
                 if unlabeled_iter is not None:
-                    pseudo_loss = outputs.new_tensor(0.0)
+                    pseudo_loss = logits.new_tensor(0.0)
                     pseudo_steps_used = 0
                     for _ in range(max(1, pseudo_steps_per_batch)):
                         x_unlabeled = next(unlabeled_iter).to(device, non_blocking=True)
                         with torch.no_grad():
-                            pseudo_raw = model(x_unlabeled).view(-1)
-                            pseudo_targets = pseudo_targets_from_outputs(
-                                pseudo_raw,
-                                min_label=min_label,
-                                max_label=max_label,
-                            )
-                            distance_to_label = (pseudo_raw - pseudo_targets).abs()
-                            mask = distance_to_label <= pseudo_threshold
+                            pseudo_probs = torch.softmax(model(x_unlabeled), dim=1)
+                            confidence, pseudo_targets = pseudo_probs.max(dim=1)
+                            mask = confidence >= pseudo_threshold
                         if mask.any():
-                            pseudo_outputs = model(x_unlabeled[mask]).view(-1)
-                            pseudo_loss = pseudo_loss + criterion(pseudo_outputs, pseudo_targets[mask])
+                            pseudo_logits = model(x_unlabeled[mask])
+                            pseudo_loss = pseudo_loss + criterion(pseudo_logits, pseudo_targets[mask])
                             pseudo_steps_used += 1
                             pseudo_used += int(mask.sum().item())
                     if pseudo_steps_used > 0:
                         loss = loss + pseudo_weight * pseudo_loss / pseudo_steps_used
+
             if is_train:
                 optimizer.zero_grad(set_to_none=True)
                 scaler.scale(loss).backward()
@@ -327,18 +313,20 @@ def run_epoch(
                 scaler.update()
 
         total_loss += loss.item() * x.size(0)
-        preds = rounded_predictions(outputs, min_label=min_label, max_label=max_label)
-        targets = y.view(-1).round().long()
-        correct += (preds == targets).sum().item()
-        mae_sum += (outputs.detach() - y.view(-1)).abs().sum().item()
+        preds = class_predictions(logits, min_label=min_label)
+        correct += (preds == labels).sum().item()
+        absolute_error_sum += (preds - labels).abs().sum().item()
         total += x.size(0)
 
+    accuracy = correct / max(total, 1)
     return {
         "loss": total_loss / max(total, 1),
-        "mae": mae_sum / max(total, 1),
-        "rounded_accuracy": correct / max(total, 1),
+        "mae": absolute_error_sum / max(total, 1),
+        "accuracy": accuracy,
+        "rounded_accuracy": accuracy,
         "pseudo_used": pseudo_used,
     }
+
 
 def confusion_matrix(model, loader, device, min_label=0, max_label=3, amp=False):
     labels = list(range(min_label, max_label + 1))
@@ -348,13 +336,12 @@ def confusion_matrix(model, loader, device, min_label=0, max_label=3, amp=False)
     with torch.no_grad():
         for x, y in tqdm(loader, desc="Confusion", unit="batch"):
             x = x.to(device, non_blocking=True)
-            y = y.to(device, non_blocking=True).float()
+            targets = y.view(-1).long().cpu()
 
             with torch.amp.autocast("cuda", enabled=amp and device.type == "cuda"):
-                outputs = model(x).view(-1)
+                logits = model(x)
 
-            preds = rounded_predictions(outputs, min_label=min_label, max_label=max_label).cpu()
-            targets = y.view(-1).round().clamp(min_label, max_label).long().cpu()
+            preds = class_predictions(logits, min_label=min_label).cpu()
             for target, pred in zip(targets, preds):
                 matrix[int(target.item()) - min_label, int(pred.item()) - min_label] += 1
 
@@ -391,7 +378,7 @@ def train(args):
         filename_column=args.filename_column,
         label_column=args.label_column,
         transform=transform,
-        label_dtype=torch.float32,
+        label_dtype=torch.long,
         allowed_labels=range(args.min_label, args.max_label + 1),
     )
     train_dataset, val_dataset, test_dataset, split_summary = split_train_val_test_by_batch(
@@ -427,10 +414,9 @@ def train(args):
         unlabeled_dataset = UnlabeledVolumeDataset(args.unlabeled_dir, transform=transform)
         unlabeled_loader = make_loader(unlabeled_dataset, args.batch_size, True, args.num_workers, device)
 
-    model = ResNet3D(output_size=1, base_channels=args.base_channels, dropout=args.dropout).to(device)
-    if args.init_output_bias:
-        initialize_regression_head_bias(model, train_dataset)
-    criterion = nn.SmoothL1Loss() if args.loss == "smooth_l1" else nn.MSELoss()
+    num_classes = args.max_label - args.min_label + 1
+    model = ResNet3D(output_size=num_classes, base_channels=args.base_channels, dropout=args.dropout).to(device)
+    criterion = nn.CrossEntropyLoss()
     optimizer = optim.AdamW(model.parameters(), lr=args.lr, weight_decay=args.weight_decay)
     scheduler = optim.lr_scheduler.CosineAnnealingLR(optimizer, T_max=args.epochs)
 
@@ -449,7 +435,7 @@ def train(args):
     log_path = run_dir / "clf_3d_log.csv"
     with open(log_path, "w", newline="") as file:
         writer = csv.writer(file)
-        writer.writerow(["epoch", "train_loss", "train_mae", "train_rounded_accuracy", "val_loss", "val_mae", "val_rounded_accuracy", "pseudo_used", "lr"])
+        writer.writerow(["epoch", "train_loss", "train_mae", "train_accuracy", "val_loss", "val_mae", "val_accuracy", "pseudo_used", "lr"])
 
     for epoch in range(args.epochs):
         active_unlabeled_loader = unlabeled_loader if epoch + 1 >= args.pseudo_start_epoch else None
@@ -482,9 +468,9 @@ def train(args):
         print(
             f"Epoch [{epoch + 1}/{args.epochs}] "
             f"Train loss: {train_metrics['loss']:.4f} mae: {train_metrics['mae']:.4f} "
-            f"rounded acc: {train_metrics['rounded_accuracy']:.4f} | "
+            f"acc: {train_metrics['rounded_accuracy']:.4f} | "
             f"Val loss: {val_metrics['loss']:.4f} mae: {val_metrics['mae']:.4f} "
-            f"rounded acc: {val_metrics['rounded_accuracy']:.4f} | "
+            f"acc: {val_metrics['rounded_accuracy']:.4f} | "
             f"Pseudo: {train_metrics['pseudo_used']}"
         )
 
@@ -508,7 +494,7 @@ def train(args):
             best_val_loss = val_metrics["loss"]
             epochs_without_improvement = 0
             save_checkpoint(run_dir / "best.pth", model, optimizer, epoch + 1, val_metrics, args)
-            print("New best regressor found")
+            print("New best classifier found")
         else:
             epochs_without_improvement += 1
             if args.early_stop_patience > 0:
@@ -560,28 +546,25 @@ def train(args):
     )
     print(
         f"Test loss: {test_metrics['loss']:.4f} mae: {test_metrics['mae']:.4f} "
-        f"rounded acc: {test_metrics['rounded_accuracy']:.4f}"
+        f"acc: {test_metrics['rounded_accuracy']:.4f}"
     )
-    print(f"Test confusion matrix rows=true labels, columns=rounded predictions {test_labels}:")
+    print(f"Test confusion matrix rows=true labels, columns=predicted labels {test_labels}:")
     print(test_confusion_matrix.numpy())
     print(f"Training complete. Outputs saved in: {run_dir}")
 
 
 def parse_args():
-    parser = argparse.ArgumentParser(description="Train a 3D ResNet regressor on NIfTI volumes with rounded 0-3 outputs")
+    parser = argparse.ArgumentParser(description="Train a 3D ResNet classifier on NIfTI volumes with labels 0-3")
     parser.add_argument("--train_dir", type=str, required=True, help="folder containing all labeled NIfTI volumes")
     parser.add_argument("--label_csv", type=str, required=True, help="CSV with filename and target columns")
     parser.add_argument("--save_dir", type=str, required=True, help="directory for checkpoints and logs")
-    parser.add_argument("--unlabeled_dir", type=str, default="", help="optional folder for regression pseudo-label training")
+    parser.add_argument("--unlabeled_dir", type=str, default="", help="optional folder for classification pseudo-label training")
     parser.add_argument("--filename_column", type=str, default="filename", help="CSV filename column")
     parser.add_argument("--label_column", type=str, default="label", help="CSV target column")
-    parser.add_argument("--min_label", type=int, default=0, help="minimum rounded output label")
-    parser.add_argument("--max_label", type=int, default=3, help="maximum rounded output label")
+    parser.add_argument("--min_label", type=int, default=0, help="minimum class label")
+    parser.add_argument("--max_label", type=int, default=3, help="maximum class label")
     parser.add_argument("--base_channels", type=int, default=16, help="3D ResNet width; 16 is memory-friendly for 128^3")
-    parser.add_argument("--dropout", type=float, default=0.2, help="regressor dropout")
-    parser.add_argument("--loss", choices=("mse", "smooth_l1"), default="smooth_l1", help="regression loss")
-    parser.add_argument("--init_output_bias", action="store_true", default=True, help="initialize final bias to the training-label mean")
-    parser.add_argument("--no_init_output_bias", dest="init_output_bias", action="store_false", help="disable output-bias initialization")
+    parser.add_argument("--dropout", type=float, default=0.2, help="classifier dropout")
     parser.add_argument("--epochs", type=int, default=100, help="number of epochs")
     parser.add_argument("--batch_size", type=int, default=16, help="batch size for 128^3 volumes")
     parser.add_argument("--lr", type=float, default=1e-4, help="learning rate")
@@ -591,7 +574,7 @@ def parse_args():
     parser.add_argument("--overfit_samples", type=int, default=0, help="debug mode: train/val/test on the first N training samples")
     parser.add_argument("--num_workers", type=int, default=2, help="DataLoader workers")
     parser.add_argument("--pseudo_start_epoch", type=int, default=10, help="first epoch that uses pseudo labels")
-    parser.add_argument("--pseudo_threshold", type=float, default=0.25, help="maximum distance from rounded label for pseudo labels")
+    parser.add_argument("--pseudo_threshold", type=float, default=0.95, help="minimum softmax confidence for pseudo labels")
     parser.add_argument("--pseudo_weight", type=float, default=0.3, help="loss weight for pseudo-labeled samples")
     parser.add_argument("--pseudo_steps_per_batch", type=int, default=3, help="unlabeled batches to evaluate for each labeled batch")
     parser.add_argument("--early_stop_patience", type=int, default=20, help="epochs without validation loss improvement before stopping; set 0 to disable")
@@ -604,3 +587,4 @@ def parse_args():
 
 if __name__ == "__main__":
     train(parse_args())
+
