@@ -19,8 +19,7 @@ from utils.splits import split_train_val_test
 
 def train(dataset, vae, save_dir, gan=None, vae_lr=1e-4, gan_lr=1e-4, epochs=500, batch_size=8,
           val_split=0.1, test_split=0.1, load_model_id=None, beta=1e-6, gamma=0.01,
-          loss_criterion='MAE', random_state=42, amp=False, num_workers=0,
-          lr_scheduler_patience=20, lr_scheduler_factor=0.5):
+          loss_criterion='MAE', random_state=42, amp=False, num_workers=0):
     # device ready
     device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
     print('Using', 'GPU' if torch.cuda.is_available() else 'CPU')
@@ -32,18 +31,8 @@ def train(dataset, vae, save_dir, gan=None, vae_lr=1e-4, gan_lr=1e-4, epochs=500
     # components ready
     vae_optimizer = optim.Adam(vae.parameters(), lr=vae_lr)
     gan_optimizer = optim.Adam(gan.parameters(), betas=(0.5, 0.999), lr=gan_lr) if use_gan else None
-    vae_scheduler = optim.lr_scheduler.ReduceLROnPlateau(
-        vae_optimizer,
-        mode='min',
-        factor=lr_scheduler_factor,
-        patience=lr_scheduler_patience,
-    )
-    gan_scheduler = optim.lr_scheduler.ReduceLROnPlateau(
-        gan_optimizer,
-        mode='min',
-        factor=lr_scheduler_factor,
-        patience=lr_scheduler_patience,
-    ) if use_gan else None
+    vae_scheduler = optim.lr_scheduler.CosineAnnealingLR(vae_optimizer, T_max=epochs)
+    gan_scheduler = optim.lr_scheduler.CosineAnnealingLR(gan_optimizer, T_max=epochs) if use_gan else None
     scaler = torch.amp.GradScaler('cuda', enabled=amp and device.type == 'cuda')
 
     # load from checkpoint
@@ -98,9 +87,7 @@ def train(dataset, vae, save_dir, gan=None, vae_lr=1e-4, gan_lr=1e-4, epochs=500
                        'vae_use_residual': vae.with_residual, 'vae learning rate': vae_lr,
                        'loss_fn': loss_criterion, 'epochs': epochs, 'batch_size': batch_size,
                        'beta': beta, 'vae_optimizer': 'Adam', 'amp': amp, 'num_workers': num_workers,
-                       'lr_scheduler': 'ReduceLROnPlateau',
-                       'lr_scheduler_patience': lr_scheduler_patience,
-                       'lr_scheduler_factor': lr_scheduler_factor}
+                       'lr_scheduler': 'CosineAnnealingLR'}
     if use_gan:
         hyperparameters.update({'gan_optimizer': 'Adam', 'gan learning rate': gan_lr, 'gamma': gamma,
                                 'gan_patch_size': gan.patch_size, 'gan_base_channel': gan.base_channel,
@@ -210,9 +197,9 @@ def train(dataset, vae, save_dir, gan=None, vae_lr=1e-4, gan_lr=1e-4, epochs=500
         val_adv_loss /= val_size
         val_gan_loss /= val_size
 
-        vae_scheduler.step(val_recon_loss)
+        vae_scheduler.step()
         if use_gan:
-            gan_scheduler.step(val_gan_loss)
+            gan_scheduler.step()
         vae_current_lr = vae_optimizer.param_groups[0]['lr']
         gan_current_lr = gan_optimizer.param_groups[0]['lr'] if use_gan else 0.0
 
@@ -297,8 +284,6 @@ def main():
     parser.add_argument('--load_model_id', type=str, default='', help='load_model_id')
     parser.add_argument('--amp', action='store_true', help='use CUDA automatic mixed precision')
     parser.add_argument('--num_workers', type=int, default=0, help='DataLoader workers')
-    parser.add_argument('--lr_scheduler_patience', type=int, default=20, help='ReduceLROnPlateau patience')
-    parser.add_argument('--lr_scheduler_factor', type=float, default=0.5, help='ReduceLROnPlateau LR decay factor')
 
     args = parser.parse_args()
     transform = tio.Compose([
@@ -326,9 +311,7 @@ def main():
     train(dataset, vae=vae, save_dir=args.save_dir, gan=gan, vae_lr=args.vae_lr, gan_lr=args.gan_lr,
           epochs=args.epochs, batch_size=args.batch_size, val_split=0.1, beta=args.beta, gamma=args.gamma,
           loss_criterion=args.loss_criterion, random_state=args.random_state, load_model_id=args.load_model_id,
-          amp=args.amp, num_workers=args.num_workers,
-          lr_scheduler_patience=args.lr_scheduler_patience,
-          lr_scheduler_factor=args.lr_scheduler_factor)
+          amp=args.amp, num_workers=args.num_workers)
 
 
 if __name__ == '__main__':
