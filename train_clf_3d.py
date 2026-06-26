@@ -10,7 +10,6 @@ from pathlib import Path
 import numpy as np
 import torch
 import torch.nn as nn
-import torch.nn.functional as F
 import torch.optim as optim
 from torch.utils.data import DataLoader, Dataset, Subset
 from tqdm import tqdm
@@ -168,6 +167,14 @@ def selected_train_val_count(available_count, fraction):
     return max(2, min(available_count, int(round(available_count * fraction))))
 
 
+
+def first_subset(dataset, sample_count):
+    source = dataset.dataset if isinstance(dataset, Subset) else dataset
+    indices = list(dataset.indices if isinstance(dataset, Subset) else range(len(dataset)))
+    if sample_count <= 0 or sample_count >= len(indices):
+        return dataset
+    return Subset(source, indices[:sample_count])
+
 def split_train_val_test_by_batch(dataset, random_state, train_val_fraction=1.0):
     grouped_indices = {}
     for index, (path, _label) in enumerate(dataset.samples):
@@ -243,45 +250,6 @@ def print_label_counts(split_name, dataset, min_label, max_label):
     counts = label_counts_from_dataset(dataset, min_label, max_label)
     summary = " ".join(f"{label}:{count}" for label, count in counts.items())
     print(f"{split_name} label counts: {summary}")
-
-
-def class_weights_from_counts(counts, device):
-    count_values = torch.tensor(list(counts.values()), dtype=torch.float32, device=device)
-    present = count_values > 0
-    weights = torch.ones_like(count_values)
-    if present.any():
-        present_counts = count_values[present]
-        weights[present] = present_counts.sum() / (present_counts.clamp_min(1.0) * present_counts.numel())
-        weights = weights / weights[present].mean().clamp_min(1e-8)
-    return weights
-
-
-class BalancedRegressionLoss(nn.Module):
-    def __init__(self, loss_name, class_weights, min_label=0):
-        super().__init__()
-        self.loss_name = loss_name
-        self.register_buffer("class_weights", class_weights.float())
-        self.min_label = min_label
-
-    def forward(self, outputs, targets):
-        outputs = outputs.view(-1)
-        targets = targets.view(-1).float()
-        if self.loss_name == "smooth_l1":
-            losses = F.smooth_l1_loss(outputs, targets, reduction="none")
-        else:
-            losses = F.mse_loss(outputs, targets, reduction="none")
-        weight_indices = (targets.round().long() - self.min_label).clamp(0, self.class_weights.numel() - 1)
-        weights = self.class_weights[weight_indices]
-        return (losses * weights).mean()
-
-
-def make_regression_loss(loss_name, train_dataset, min_label, max_label, device, balanced=True):
-    if not balanced:
-        return nn.SmoothL1Loss() if loss_name == "smooth_l1" else nn.MSELoss()
-    counts = label_counts_from_dataset(train_dataset, min_label, max_label)
-    weights = class_weights_from_counts(counts, device)
-    print("Balanced loss weights:", {label: float(weights[label - min_label].item()) for label in counts})
-    return BalancedRegressionLoss(loss_name, weights, min_label=min_label)
 
 
 def initialize_regression_head_bias(model, train_dataset):
@@ -431,6 +399,12 @@ def train(args):
         args.random_state,
         train_val_fraction=args.train_val_fraction,
     )
+    if args.overfit_samples > 0:
+        train_dataset = first_subset(train_dataset, args.overfit_samples)
+        val_dataset = train_dataset
+        test_dataset = train_dataset
+        print(f"Overfit debug mode: using {len(train_dataset)} samples for train/val/test")
+
     print_label_counts("Train", train_dataset, args.min_label, args.max_label)
     print_label_counts("Validation", val_dataset, args.min_label, args.max_label)
     print_label_counts("Test", test_dataset, args.min_label, args.max_label)
@@ -449,21 +423,14 @@ def train(args):
         )
 
     unlabeled_loader = None
-    if args.unlabeled_dir:
+    if args.unlabeled_dir and args.overfit_samples <= 0:
         unlabeled_dataset = UnlabeledVolumeDataset(args.unlabeled_dir, transform=transform)
         unlabeled_loader = make_loader(unlabeled_dataset, args.batch_size, True, args.num_workers, device)
 
     model = ResNet3D(output_size=1, base_channels=args.base_channels, dropout=args.dropout).to(device)
     if args.init_output_bias:
         initialize_regression_head_bias(model, train_dataset)
-    criterion = make_regression_loss(
-        args.loss,
-        train_dataset,
-        args.min_label,
-        args.max_label,
-        device,
-        balanced=not args.no_balanced_loss,
-    )
+    criterion = nn.SmoothL1Loss() if args.loss == "smooth_l1" else nn.MSELoss()
     optimizer = optim.AdamW(model.parameters(), lr=args.lr, weight_decay=args.weight_decay)
     scheduler = optim.lr_scheduler.CosineAnnealingLR(optimizer, T_max=args.epochs)
 
@@ -613,7 +580,6 @@ def parse_args():
     parser.add_argument("--base_channels", type=int, default=16, help="3D ResNet width; 16 is memory-friendly for 128^3")
     parser.add_argument("--dropout", type=float, default=0.2, help="regressor dropout")
     parser.add_argument("--loss", choices=("mse", "smooth_l1"), default="smooth_l1", help="regression loss")
-    parser.add_argument("--no_balanced_loss", action="store_true", help="disable inverse-frequency weighting for labels")
     parser.add_argument("--init_output_bias", action="store_true", default=True, help="initialize final bias to the training-label mean")
     parser.add_argument("--no_init_output_bias", dest="init_output_bias", action="store_false", help="disable output-bias initialization")
     parser.add_argument("--epochs", type=int, default=100, help="number of epochs")
@@ -622,6 +588,7 @@ def parse_args():
     parser.add_argument("--weight_decay", type=float, default=1e-4, help="AdamW weight decay")
     parser.add_argument("--random_state", type=int, default=42, help="random seed for batch-stratified train/val/test split")
     parser.add_argument("--train_val_fraction", type=float, default=1.0, help="fraction of each batch's post-test-holdout data to use for train/validation")
+    parser.add_argument("--overfit_samples", type=int, default=0, help="debug mode: train/val/test on the first N training samples")
     parser.add_argument("--num_workers", type=int, default=2, help="DataLoader workers")
     parser.add_argument("--pseudo_start_epoch", type=int, default=10, help="first epoch that uses pseudo labels")
     parser.add_argument("--pseudo_threshold", type=float, default=0.1, help="maximum distance from rounded label for pseudo labels")
