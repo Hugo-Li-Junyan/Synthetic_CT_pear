@@ -19,7 +19,7 @@ source /data/leuven/362/vsc36240/miniconda3_wice/etc/profile.d/conda.sh
 conda activate base
 cd /data/leuven/362/vsc36240/project/synthetic_data/Synthetic_CT_pear
 # Run your script with parameters
-python ./train_diffuser.py --image_dir ../images --labels_csv ../labels.csv --label_column browning --save_dir ../model --model_id	beta1e-3gamma0.01 --vae_base_channel 256 --epochs 1000 --random_state 369
+python ./train_diffuser.py --image_dir ../images --labels_csv ../labels.csv --label_column browning --save_dir ../model --model_id beta1e-3gamma0.01 --vae_base_channel 256 --epochs 1000 --random_state 369
 
 # Optional: deactivate conda env (not necessary, but clean)
 conda deactivate
