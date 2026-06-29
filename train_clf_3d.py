@@ -273,9 +273,11 @@ def run_epoch(
     model.train(is_train)
     scaler = torch.amp.GradScaler("cuda", enabled=amp and device.type == "cuda")
     total_loss = 0.0
+    total_label_loss = 0.0
+    total_pseudo_loss = 0.0
+    pseudo_loss_batches = 0
     correct = 0
     total = 0
-    absolute_error_sum = 0.0
     pseudo_used = 0
     unlabeled_iter = cycle(unlabeled_loader) if is_train and unlabeled_loader is not None else None
 
@@ -287,7 +289,9 @@ def run_epoch(
         with torch.set_grad_enabled(is_train):
             with torch.amp.autocast("cuda", enabled=amp and device.type == "cuda"):
                 logits = model(x)
-                loss = criterion(logits, targets)
+                label_loss = criterion(logits, targets)
+                loss = label_loss
+                batch_pseudo_loss = None
 
                 if unlabeled_iter is not None:
                     pseudo_loss = logits.new_tensor(0.0)
@@ -304,7 +308,8 @@ def run_epoch(
                             pseudo_steps_used += 1
                             pseudo_used += int(mask.sum().item())
                     if pseudo_steps_used > 0:
-                        loss = loss + pseudo_weight * pseudo_loss / pseudo_steps_used
+                        batch_pseudo_loss = pseudo_loss / pseudo_steps_used
+                        loss = loss + pseudo_weight * batch_pseudo_loss
 
             if is_train:
                 optimizer.zero_grad(set_to_none=True)
@@ -313,15 +318,19 @@ def run_epoch(
                 scaler.update()
 
         total_loss += loss.item() * x.size(0)
+        total_label_loss += label_loss.item() * x.size(0)
+        if batch_pseudo_loss is not None:
+            total_pseudo_loss += batch_pseudo_loss.item()
+            pseudo_loss_batches += 1
         preds = class_predictions(logits, min_label=min_label)
         correct += (preds == labels).sum().item()
-        absolute_error_sum += (preds - labels).abs().sum().item()
         total += x.size(0)
 
     accuracy = correct / max(total, 1)
     return {
         "loss": total_loss / max(total, 1),
-        "mae": absolute_error_sum / max(total, 1),
+        "label_loss": total_label_loss / max(total, 1),
+        "pseudo_loss": total_pseudo_loss / max(pseudo_loss_batches, 1),
         "accuracy": accuracy,
         "rounded_accuracy": accuracy,
         "pseudo_used": pseudo_used,
@@ -435,7 +444,10 @@ def train(args):
     log_path = run_dir / "clf_3d_log.csv"
     with open(log_path, "w", newline="") as file:
         writer = csv.writer(file)
-        writer.writerow(["epoch", "train_loss", "train_mae", "train_accuracy", "val_loss", "val_mae", "val_accuracy", "pseudo_used", "lr"])
+        writer.writerow([
+            "epoch", "train_label_loss", "train_pseudo_loss", "train_accuracy",
+            "val_label_loss", "val_pseudo_loss", "val_accuracy", "pseudo_used", "lr",
+        ])
 
     for epoch in range(args.epochs):
         active_unlabeled_loader = unlabeled_loader if epoch + 1 >= args.pseudo_start_epoch else None
@@ -467,9 +479,10 @@ def train(args):
 
         print(
             f"Epoch [{epoch + 1}/{args.epochs}] "
-            f"Train loss: {train_metrics['loss']:.4f} mae: {train_metrics['mae']:.4f} "
+            f"Train label loss: {train_metrics['label_loss']:.4f} "
+            f"pseudo loss: {train_metrics['pseudo_loss']:.4f} "
             f"acc: {train_metrics['rounded_accuracy']:.4f} | "
-            f"Val loss: {val_metrics['loss']:.4f} mae: {val_metrics['mae']:.4f} "
+            f"Val label loss: {val_metrics['label_loss']:.4f} "
             f"acc: {val_metrics['rounded_accuracy']:.4f} | "
             f"Pseudo: {train_metrics['pseudo_used']}"
         )
@@ -478,37 +491,41 @@ def train(args):
             writer = csv.writer(file)
             writer.writerow([
                 epoch + 1,
-                train_metrics["loss"],
-                train_metrics["mae"],
+                train_metrics["label_loss"],
+                train_metrics["pseudo_loss"],
                 train_metrics["rounded_accuracy"],
-                val_metrics["loss"],
-                val_metrics["mae"],
+                val_metrics["label_loss"],
+                val_metrics["pseudo_loss"],
                 val_metrics["rounded_accuracy"],
                 train_metrics["pseudo_used"],
                 lr,
             ])
 
         save_checkpoint(run_dir / "latest.pth", model, optimizer, epoch + 1, val_metrics, args)
-        improved = val_metrics["loss"] < best_val_loss - args.early_stop_min_delta
-        if improved:
-            best_val_loss = val_metrics["loss"]
-            epochs_without_improvement = 0
-            save_checkpoint(run_dir / "best.pth", model, optimizer, epoch + 1, val_metrics, args)
-            print("New best classifier found")
-        else:
-            epochs_without_improvement += 1
-            if args.early_stop_patience > 0:
-                print(
-                    f"No validation loss improvement for "
-                    f"{epochs_without_improvement}/{args.early_stop_patience} epochs"
-                )
+        early_stopping_active = epoch + 1 > args.pseudo_start_epoch
+        if early_stopping_active:
+            improved = val_metrics["label_loss"] < best_val_loss - args.early_stop_min_delta
+            if improved:
+                best_val_loss = val_metrics["label_loss"]
+                epochs_without_improvement = 0
+                save_checkpoint(run_dir / "best.pth", model, optimizer, epoch + 1, val_metrics, args)
+                print("New best classifier found")
+            else:
+                epochs_without_improvement += 1
+                if args.early_stop_patience > 0:
+                    print(
+                        f"No validation label loss improvement for "
+                        f"{epochs_without_improvement}/{args.early_stop_patience} epochs"
+                    )
 
-        if 0 < args.early_stop_patience <= epochs_without_improvement:
-            print(
-                f"Early stopping at epoch {epoch + 1}. "
-                f"Best validation loss: {best_val_loss:.4f}"
-            )
-            break
+            if 0 < args.early_stop_patience <= epochs_without_improvement:
+                print(
+                    f"Early stopping at epoch {epoch + 1}. "
+                    f"Best validation label loss: {best_val_loss:.4f}"
+                )
+                break
+        else:
+            print(f"Early stopping monitoring starts after epoch {args.pseudo_start_epoch}")
 
     best_checkpoint_path = run_dir / "best.pth"
     if best_checkpoint_path.exists():
@@ -545,7 +562,8 @@ def train(args):
         test_confusion_matrix,
     )
     print(
-        f"Test loss: {test_metrics['loss']:.4f} mae: {test_metrics['mae']:.4f} "
+        f"Test label loss: {test_metrics['label_loss']:.4f} "
+        f"pseudo loss: {test_metrics['pseudo_loss']:.4f} "
         f"acc: {test_metrics['rounded_accuracy']:.4f}"
     )
     print(f"Test confusion matrix rows=true labels, columns=predicted labels {test_labels}:")
