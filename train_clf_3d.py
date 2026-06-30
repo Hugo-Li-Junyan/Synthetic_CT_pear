@@ -364,6 +364,40 @@ def save_confusion_matrix_csv(path, labels, matrix):
         for label, row in zip(labels, matrix.tolist()):
             writer.writerow([label, *row])
 
+def misclassified_samples(model, loader, dataset, device, min_label=0, amp=False):
+    source = dataset.dataset if isinstance(dataset, Subset) else dataset
+    indices = list(dataset.indices if isinstance(dataset, Subset) else range(len(dataset)))
+    sample_offset = 0
+    mistakes = []
+
+    model.eval()
+    with torch.no_grad():
+        for x, y in tqdm(loader, desc="Misclassified", unit="batch"):
+            x = x.to(device, non_blocking=True)
+            labels = y.view(-1).long().cpu()
+            with torch.amp.autocast("cuda", enabled=amp and device.type == "cuda"):
+                logits = model(x)
+            preds = class_predictions(logits, min_label=min_label).cpu()
+
+            for batch_index, (label, pred) in enumerate(zip(labels, preds)):
+                if pred.item() != label.item():
+                    sample_index = indices[sample_offset + batch_index]
+                    sample_path, _ = source.samples[sample_index]
+                    mistakes.append((Path(sample_path).name, int(label.item()), int(pred.item())))
+            sample_offset += len(labels)
+
+    return mistakes
+
+
+def print_misclassified_samples(split_name, mistakes):
+    print(f"{split_name} misclassified samples ({len(mistakes)}):")
+    if not mistakes:
+        print("  None")
+        return
+    for filename, true_label, predicted_label in mistakes:
+        print(f"  {filename}: true={true_label}, predicted={predicted_label}")
+
+
 def save_checkpoint(path, model, optimizer, epoch, metrics, args):
     checkpoint = {
         "epoch": epoch,
@@ -568,6 +602,14 @@ def train(args):
     )
     print(f"Test confusion matrix rows=true labels, columns=predicted labels {test_labels}:")
     print(test_confusion_matrix.numpy())
+    val_mistakes = misclassified_samples(
+        model, val_loader, val_dataset, device, min_label=args.min_label, amp=args.amp
+    )
+    test_mistakes = misclassified_samples(
+        model, test_loader, test_dataset, device, min_label=args.min_label, amp=args.amp
+    )
+    print_misclassified_samples("Validation", val_mistakes)
+    print_misclassified_samples("Test", test_mistakes)
     print(f"Training complete. Outputs saved in: {run_dir}")
 
 
