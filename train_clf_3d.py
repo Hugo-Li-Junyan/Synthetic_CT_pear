@@ -118,6 +118,7 @@ def build_transform(augment):
     return tio.Compose([
         tio.RandomFlip(axes=(0, 1, 2)),
         tio.RandomAffine(scales=(0.95, 1.05), degrees=10, isotropic=True),
+        tio.RandomGamma(log_gamma=(-0.2, 0.2)),
     ])
 
 
@@ -414,13 +415,12 @@ def train(args):
     print("Using", "GPU" if device.type == "cuda" else "CPU")
     os.makedirs(args.save_dir, exist_ok=True)
 
-    transform = build_transform(args.augment)
     dataset = CsvVolumeDataset(
         args.train_dir,
         args.label_csv,
         filename_column=args.filename_column,
         label_column=args.label_column,
-        transform=transform,
+        transform=None,
         label_dtype=torch.long,
         allowed_labels=range(args.min_label, args.max_label + 1),
     )
@@ -431,9 +431,23 @@ def train(args):
     )
     if args.overfit_samples > 0:
         train_dataset = first_subset(train_dataset, args.overfit_samples)
-        val_dataset = train_dataset
-        test_dataset = train_dataset
+        debug_indices = list(train_dataset.indices)
+        val_dataset = Subset(dataset, debug_indices)
+        test_dataset = Subset(dataset, debug_indices)
         print(f"Overfit debug mode: using {len(train_dataset)} samples for train/val/test")
+
+    transform = build_transform(args.augment)
+    if transform is not None:
+        augmented_dataset = CsvVolumeDataset(
+            args.train_dir,
+            args.label_csv,
+            filename_column=args.filename_column,
+            label_column=args.label_column,
+            transform=transform,
+            label_dtype=torch.long,
+            allowed_labels=range(args.min_label, args.max_label + 1),
+        )
+        train_dataset = Subset(augmented_dataset, list(train_dataset.indices))
 
     print_label_counts("Train", train_dataset, args.min_label, args.max_label)
     print_label_counts("Validation", val_dataset, args.min_label, args.max_label)
