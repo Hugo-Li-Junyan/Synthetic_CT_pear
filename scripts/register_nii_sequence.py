@@ -30,31 +30,54 @@ def validate_inputs(folders):
     return sorted(expected, key=str.lower)
 
 
+def registration_image_and_mask(image):
+    """Normalize intensities and isolate foreground for metric evaluation."""
+    image = sitk.Cast(image, sitk.sitkFloat32)
+    normalized = sitk.RescaleIntensity(image, 0.0, 1.0)
+    mask = sitk.OtsuThreshold(normalized, 0, 1, 128)
+    mask = sitk.BinaryMorphologicalClosing(mask, [2, 2, 2])
+    return normalized, sitk.Cast(mask, sitk.sitkUInt8)
+
+
 def register(fixed, moving, model):
+    fixed_registration, fixed_mask = registration_image_and_mask(fixed)
+    moving_registration, moving_mask = registration_image_and_mask(moving)
+
     initial = sitk.Euler3DTransform() if model == "rigid" else sitk.AffineTransform(3)
     initial = sitk.CenteredTransformInitializer(
-        fixed, moving, initial,
-        sitk.CenteredTransformInitializerFilter.GEOMETRY,
-    )
-    method = sitk.ImageRegistrationMethod()
-    method.SetMetricAsMattesMutualInformation(numberOfHistogramBins=50)
-    method.SetMetricSamplingStrategy(method.RANDOM)
-    method.SetMetricSamplingPercentage(0.20, seed=42)
-    method.SetInterpolator(sitk.sitkLinear)
-    method.SetOptimizerAsGradientDescent(
-        learningRate=1.0, numberOfIterations=300,
-        convergenceMinimumValue=1e-6, convergenceWindowSize=15,
-    )
-    method.SetOptimizerScalesFromPhysicalShift()
-    method.SetShrinkFactorsPerLevel([4, 2, 1])
-    method.SetSmoothingSigmasPerLevel([2, 1, 0])
-    method.SmoothingSigmasAreSpecifiedInPhysicalUnitsOn()
-    method.SetInitialTransform(initial, inPlace=False)
-    return method.Execute(
-        sitk.Cast(fixed, sitk.sitkFloat32),
-        sitk.Cast(moving, sitk.sitkFloat32),
+        fixed_registration,
+        moving_registration,
+        initial,
+        sitk.CenteredTransformInitializerFilter.MOMENTS,
     )
 
+    method = sitk.ImageRegistrationMethod()
+    # Correlation is well suited to corresponding scans from the same modality.
+    method.SetMetricAsCorrelation()
+    method.SetMetricFixedMask(fixed_mask)
+    method.SetMetricMovingMask(moving_mask)
+    method.SetMetricSamplingStrategy(method.NONE)
+    method.SetInterpolator(sitk.sitkLinear)
+    method.SetOptimizerAsRegularStepGradientDescent(
+        learningRate=2.0,
+        minStep=1e-4,
+        numberOfIterations=500,
+        relaxationFactor=0.5,
+        gradientMagnitudeTolerance=1e-8,
+    )
+    method.SetOptimizerScalesFromPhysicalShift()
+    method.SetShrinkFactorsPerLevel([8, 4, 2, 1])
+    method.SetSmoothingSigmasPerLevel([4, 2, 1, 0])
+    method.SmoothingSigmasAreSpecifiedInPhysicalUnitsOn()
+    method.SetInitialTransform(initial, inPlace=False)
+
+    transform = method.Execute(fixed_registration, moving_registration)
+    print(
+        f"    metric={method.GetMetricValue():.6g}, "
+        f"iterations={method.GetOptimizerIteration()}, "
+        f"stop={method.GetOptimizerStopConditionDescription()}"
+    )
+    return transform
 
 def output_name(name):
     return name[:-7] + ".nii" if name.lower().endswith(".nii.gz") else name
@@ -136,4 +159,6 @@ def main():
 
 if __name__ == "__main__":
     main()
+
+
 
