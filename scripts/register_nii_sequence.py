@@ -1,6 +1,7 @@
 """Register corresponding 3D NIfTI files across multiple folders."""
 
 import argparse
+import itertools
 from pathlib import Path
 
 import numpy as np
@@ -36,16 +37,22 @@ def validate_inputs(folders):
 def foreground_mask(image, threshold=None):
     """Create a binary foreground mask from the image."""
     image = sitk.Cast(image, sitk.sitkFloat32)
-    if threshold is None:
-        mask = sitk.OtsuThreshold(image, 0, 1, 128)
-    else:
-        mask = sitk.BinaryThreshold(
-            image,
-            lowerThreshold=float(threshold),
-            upperThreshold=float(sitk.GetArrayViewFromImage(image).max()),
-            insideValue=1,
-            outsideValue=0,
-        )
+    limits = sitk.MinimumMaximumImageFilter()
+    limits.Execute(image)
+    minimum = float(limits.GetMinimum())
+    maximum = float(limits.GetMaximum())
+    lower = (
+        float(np.nextafter(np.float32(minimum), np.float32(np.inf)))
+        if threshold is None
+        else float(threshold)
+    )
+    mask = sitk.BinaryThreshold(
+        image,
+        lowerThreshold=lower,
+        upperThreshold=maximum,
+        insideValue=1,
+        outsideValue=0,
+    )
     mask = sitk.BinaryMorphologicalClosing(mask, [2, 2, 2])
     mask = sitk.BinaryFillhole(mask)
     return sitk.Cast(mask, sitk.sitkUInt8)
@@ -60,6 +67,57 @@ def shape_distance(mask):
         useImageSpacing=True,
     )
 
+
+def mask_pca(mask, image):
+    """Return physical centroid and principal-axis basis of a binary mask."""
+    xyz = np.argwhere(sitk.GetArrayViewFromImage(mask) > 0)[:, ::-1].astype(float)
+    if len(xyz) < 4:
+        raise ValueError("Foreground mask is empty or too small.")
+    direction = np.asarray(image.GetDirection()).reshape(3, 3)
+    points = (
+        (xyz * np.asarray(image.GetSpacing())) @ direction.T
+        + np.asarray(image.GetOrigin())
+    )
+    centroid = points.mean(axis=0)
+    _, eigenvectors = np.linalg.eigh(np.cov((points - centroid).T))
+    return centroid, eigenvectors[:, ::-1]
+
+
+def pca_rigid_from_masks(fixed, moving, fixed_mask, moving_mask):
+    """Choose the principal-axis rigid alignment with maximum mask Dice."""
+    fixed_center, fixed_axes = mask_pca(fixed_mask, fixed)
+    moving_center, moving_axes = mask_pca(moving_mask, moving)
+    fixed_array = sitk.GetArrayViewFromImage(fixed_mask) > 0
+    best_dice, best_transform = -1.0, None
+
+    for signs in itertools.product((-1, 1), repeat=3):
+        rotation = moving_axes @ np.diag(signs) @ fixed_axes.T
+        if np.linalg.det(rotation) < 0:
+            continue
+        candidate = sitk.Euler3DTransform()
+        candidate.SetCenter(tuple(fixed_center))
+        candidate.SetMatrix(tuple(rotation.ravel()))
+        candidate.SetTranslation(tuple(moving_center - fixed_center))
+        aligned = sitk.Resample(
+            moving_mask,
+            fixed_mask,
+            candidate,
+            sitk.sitkNearestNeighbor,
+            0,
+            sitk.sitkUInt8,
+        )
+        aligned_array = sitk.GetArrayViewFromImage(aligned) > 0
+        denominator = fixed_array.sum() + aligned_array.sum()
+        dice = (
+            2.0 * np.logical_and(fixed_array, aligned_array).sum() / denominator
+            if denominator
+            else 0.0
+        )
+        if dice > best_dice:
+            best_dice, best_transform = float(dice), candidate
+
+    print(f"    PCA rigid foreground Dice={best_dice:.6f}")
+    return best_transform
 
 def translation_from_masks(fixed, moving, fixed_mask, moving_mask):
     """Find the integer translation that maximizes binary foreground overlap."""
@@ -87,6 +145,10 @@ def register(fixed, moving, model, threshold):
     moving_mask = foreground_mask(moving, threshold)
     if model == "translation":
         return translation_from_masks(
+            fixed, moving, fixed_mask, moving_mask
+        )
+    if model == "rigid":
+        return pca_rigid_from_masks(
             fixed, moving, fixed_mask, moving_mask
         )
 
@@ -192,8 +254,8 @@ def parse_args():
     parser.add_argument(
         "--transform",
         choices=("translation", "rigid", "affine"),
-        default="translation",
-        help="Default translation maximizes foreground overlap without rotation."
+        default="rigid",
+        help="Default rigid mode aligns foreground principal axes and centroids."
     )
     parser.add_argument(
         "--interpolation", choices=("linear", "nearest"), default="linear"
@@ -202,7 +264,7 @@ def parse_args():
         "--foreground-threshold",
         type=float,
         default=None,
-        help="Foreground is intensity >= this value; default uses Otsu automatically.",
+        help="Foreground is intensity >= this value; default uses values above the image minimum.",
     )
     return parser.parse_args()
 
@@ -223,6 +285,8 @@ def main():
 
 if __name__ == "__main__":
     main()
+
+
 
 
 
