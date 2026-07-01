@@ -52,22 +52,23 @@ def register(fixed, moving, model):
     )
 
     method = sitk.ImageRegistrationMethod()
-    # Correlation is well suited to corresponding scans from the same modality.
-    method.SetMetricAsCorrelation()
+    # Mutual information remains stable when corresponding scans differ in contrast.
+    method.SetMetricAsMattesMutualInformation(numberOfHistogramBins=32)
     method.SetMetricFixedMask(fixed_mask)
     method.SetMetricMovingMask(moving_mask)
-    method.SetMetricSamplingStrategy(method.NONE)
+    method.SetMetricSamplingStrategy(method.RANDOM)
+    method.SetMetricSamplingPercentage(0.10, seed=42)
     method.SetInterpolator(sitk.sitkLinear)
     method.SetOptimizerAsRegularStepGradientDescent(
-        learningRate=2.0,
-        minStep=1e-4,
-        numberOfIterations=500,
-        relaxationFactor=0.5,
-        gradientMagnitudeTolerance=1e-8,
+        learningRate=1.0,
+        minStep=1e-3,
+        numberOfIterations=150,
+        relaxationFactor=0.6,
+        gradientMagnitudeTolerance=1e-6,
     )
     method.SetOptimizerScalesFromPhysicalShift()
-    method.SetShrinkFactorsPerLevel([8, 4, 2, 1])
-    method.SetSmoothingSigmasPerLevel([4, 2, 1, 0])
+    method.SetShrinkFactorsPerLevel([4, 2, 1])
+    method.SetSmoothingSigmasPerLevel([2, 1, 0])
     method.SmoothingSigmasAreSpecifiedInPhysicalUnitsOn()
     method.SetInitialTransform(initial, inPlace=False)
 
@@ -159,6 +160,8 @@ def main():
 
 if __name__ == "__main__":
     main()
+
+
 
 
 
