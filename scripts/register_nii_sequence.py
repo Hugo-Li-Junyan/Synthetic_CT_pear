@@ -30,39 +30,58 @@ def validate_inputs(folders):
     return sorted(expected, key=str.lower)
 
 
-def registration_image_and_mask(image):
-    """Normalize intensities and isolate foreground for metric evaluation."""
+def foreground_mask(image, threshold=None):
+    """Create a binary foreground mask from the image."""
     image = sitk.Cast(image, sitk.sitkFloat32)
-    normalized = sitk.RescaleIntensity(image, 0.0, 1.0)
-    mask = sitk.OtsuThreshold(normalized, 0, 1, 128)
+    if threshold is None:
+        mask = sitk.OtsuThreshold(image, 0, 1, 128)
+    else:
+        mask = sitk.BinaryThreshold(
+            image,
+            lowerThreshold=float(threshold),
+            upperThreshold=float(sitk.GetArrayViewFromImage(image).max()),
+            insideValue=1,
+            outsideValue=0,
+        )
     mask = sitk.BinaryMorphologicalClosing(mask, [2, 2, 2])
-    return normalized, sitk.Cast(mask, sitk.sitkUInt8)
+    mask = sitk.BinaryFillhole(mask)
+    return sitk.Cast(mask, sitk.sitkUInt8)
 
 
-def register(fixed, moving, model):
-    fixed_registration, fixed_mask = registration_image_and_mask(fixed)
-    moving_registration, moving_mask = registration_image_and_mask(moving)
+def shape_distance(mask):
+    """Return a physical signed-distance field whose zero level is the boundary."""
+    return sitk.SignedMaurerDistanceMap(
+        mask,
+        insideIsPositive=True,
+        squaredDistance=False,
+        useImageSpacing=True,
+    )
+
+
+def register(fixed, moving, model, threshold):
+    fixed_mask = foreground_mask(fixed, threshold)
+    moving_mask = foreground_mask(moving, threshold)
+    fixed_shape = shape_distance(fixed_mask)
+    moving_shape = shape_distance(moving_mask)
 
     initial = sitk.Euler3DTransform() if model == "rigid" else sitk.AffineTransform(3)
     initial = sitk.CenteredTransformInitializer(
-        fixed_registration,
-        moving_registration,
+        sitk.Cast(fixed_mask, sitk.sitkFloat32),
+        sitk.Cast(moving_mask, sitk.sitkFloat32),
         initial,
         sitk.CenteredTransformInitializerFilter.MOMENTS,
     )
 
     method = sitk.ImageRegistrationMethod()
-    # Mutual information remains stable when corresponding scans differ in contrast.
-    method.SetMetricAsMattesMutualInformation(numberOfHistogramBins=32)
-    method.SetMetricFixedMask(fixed_mask)
-    method.SetMetricMovingMask(moving_mask)
+    # Distance-map mean squares optimizes foreground boundary agreement only.
+    method.SetMetricAsMeanSquares()
     method.SetMetricSamplingStrategy(method.RANDOM)
-    method.SetMetricSamplingPercentage(0.10, seed=42)
+    method.SetMetricSamplingPercentage(0.15, seed=42)
     method.SetInterpolator(sitk.sitkLinear)
     method.SetOptimizerAsRegularStepGradientDescent(
         learningRate=1.0,
         minStep=1e-3,
-        numberOfIterations=150,
+        numberOfIterations=200,
         relaxationFactor=0.6,
         gradientMagnitudeTolerance=1e-6,
     )
@@ -72,9 +91,9 @@ def register(fixed, moving, model):
     method.SmoothingSigmasAreSpecifiedInPhysicalUnitsOn()
     method.SetInitialTransform(initial, inPlace=False)
 
-    transform = method.Execute(fixed_registration, moving_registration)
+    transform = method.Execute(fixed_shape, moving_shape)
     print(
-        f"    metric={method.GetMetricValue():.6g}, "
+        f"    shape_metric={method.GetMetricValue():.6g}, "
         f"iterations={method.GetOptimizerIteration()}, "
         f"stop={method.GetOptimizerStopConditionDescription()}"
     )
@@ -84,7 +103,7 @@ def output_name(name):
     return name[:-7] + ".nii" if name.lower().endswith(".nii.gz") else name
 
 
-def run(folders, output_dir, model, interpolation):
+def run(folders, output_dir, model, interpolation, foreground_threshold):
     filenames = validate_inputs(folders)
     output_folders = [output_dir / folder.name for folder in folders]
     if len(set(output_folders)) != len(output_folders):
@@ -107,7 +126,7 @@ def run(folders, output_dir, model, interpolation):
         )
         for index, moving_folder in enumerate(folders[1:], start=1):
             moving = sitk.ReadImage(str(moving_folder / filename))
-            transform = register(fixed, moving, model)
+            transform = register(fixed, moving, model, foreground_threshold)
             minimum_filter = sitk.MinimumMaximumImageFilter()
             minimum_filter.Execute(moving)
             fill_value = float(minimum_filter.GetMinimum())
@@ -147,19 +166,32 @@ def parse_args():
     parser.add_argument(
         "--interpolation", choices=("linear", "nearest"), default="linear"
     )
+    parser.add_argument(
+        "--foreground-threshold",
+        type=float,
+        default=None,
+        help="Foreground is intensity >= this value; default uses Otsu automatically.",
+    )
     return parser.parse_args()
 
 
 def main():
     args = parse_args()
     try:
-        run(args.input_dirs, args.output_dir, args.transform, args.interpolation)
+        run(
+            args.input_dirs,
+            args.output_dir,
+            args.transform,
+            args.interpolation,
+            args.foreground_threshold,
+        )
     except (OSError, RuntimeError, ValueError) as exc:
         raise SystemExit(f"Error: {exc}") from exc
 
 
 if __name__ == "__main__":
     main()
+
 
 
 
