@@ -84,8 +84,16 @@ def run(folders, output_dir, model, interpolation):
         for index, moving_folder in enumerate(folders[1:], start=1):
             moving = sitk.ReadImage(str(moving_folder / filename))
             transform = register(fixed, moving, model)
+            minimum_filter = sitk.MinimumMaximumImageFilter()
+            minimum_filter.Execute(moving)
+            fill_value = float(minimum_filter.GetMinimum())
             registered = sitk.Resample(
-                moving, fixed, transform, interpolator, 0.0, moving.GetPixelID()
+                moving,
+                fixed,
+                transform,
+                interpolator,
+                fill_value,
+                moving.GetPixelID(),
             )
             destination = output_folders[index] / name
             sitk.WriteImage(registered, str(destination), useCompression=False)
@@ -128,3 +136,4 @@ def main():
 
 if __name__ == "__main__":
     main()
+
