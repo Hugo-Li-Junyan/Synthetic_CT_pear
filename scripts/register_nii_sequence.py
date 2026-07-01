@@ -2,6 +2,9 @@
 
 import argparse
 from pathlib import Path
+
+import numpy as np
+from scipy.signal import fftconvolve
 import SimpleITK as sitk
 
 
@@ -58,9 +61,35 @@ def shape_distance(mask):
     )
 
 
+def translation_from_masks(fixed, moving, fixed_mask, moving_mask):
+    """Find the integer translation that maximizes binary foreground overlap."""
+    fixed_array = sitk.GetArrayFromImage(fixed_mask).astype(np.float32)
+    moving_array = sitk.GetArrayFromImage(moving_mask).astype(np.float32)
+    correlation = fftconvolve(
+        fixed_array,
+        moving_array[::-1, ::-1, ::-1],
+        mode="full",
+    )
+    peak = np.asarray(np.unravel_index(np.argmax(correlation), correlation.shape))
+    shift_zyx = peak - (np.asarray(moving_array.shape) - 1)
+    shift_xyz = shift_zyx[::-1].astype(float)
+
+    direction = np.asarray(fixed.GetDirection()).reshape(3, 3)
+    physical_shift = direction @ (shift_xyz * np.asarray(fixed.GetSpacing()))
+    transform = sitk.TranslationTransform(3)
+    # Resample transforms fixed output points into moving input points.
+    transform.SetOffset(tuple((-physical_shift).tolist()))
+    print(f"    foreground translation z,y,x={shift_zyx.tolist()} voxels")
+    return transform
+
 def register(fixed, moving, model, threshold):
     fixed_mask = foreground_mask(fixed, threshold)
     moving_mask = foreground_mask(moving, threshold)
+    if model == "translation":
+        return translation_from_masks(
+            fixed, moving, fixed_mask, moving_mask
+        )
+
     fixed_shape = shape_distance(fixed_mask)
     moving_shape = shape_distance(moving_mask)
 
@@ -161,7 +190,10 @@ def parse_args():
     )
     parser.add_argument("-o", "--output-dir", required=True, type=Path)
     parser.add_argument(
-        "--transform", choices=("rigid", "affine"), default="rigid"
+        "--transform",
+        choices=("translation", "rigid", "affine"),
+        default="translation",
+        help="Default translation maximizes foreground overlap without rotation."
     )
     parser.add_argument(
         "--interpolation", choices=("linear", "nearest"), default="linear"
@@ -191,6 +223,7 @@ def main():
 
 if __name__ == "__main__":
     main()
+
 
 
 
