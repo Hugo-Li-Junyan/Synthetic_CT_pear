@@ -126,53 +126,67 @@ def rigid_icp(source, target, initial_rotation, initial_translation):
 
 
 def pca_rigid_from_masks(fixed, moving, fixed_mask, moving_mask):
-    """Rigidly align foreground surfaces and select by full-mask Dice."""
+    """Align foreground surfaces, allowing an optional left-right reflection."""
     fixed_points = mask_surface_points(fixed_mask, fixed)
     moving_points = mask_surface_points(moving_mask, moving)
     fixed_center, fixed_axes = point_pca(fixed_points)
     moving_center, moving_axes = point_pca(moving_points)
     fixed_array = sitk.GetArrayViewFromImage(fixed_mask) > 0
-    best_dice, best_transform = -1.0, None
+    best_dice, best_transform, best_mirrored = -1.0, None, False
 
-    for signs in itertools.product((-1, 1), repeat=3):
-        initial_rotation = fixed_axes @ np.diag(signs) @ moving_axes.T
-        if np.linalg.det(initial_rotation) < 0:
-            continue
-        initial_translation = (
-            fixed_center - initial_rotation @ moving_center
-        )
-        # ICP maps moving points to fixed points.
-        rotation, translation = rigid_icp(
+    # Include near-identity and explicit image-X reflection starts so ICP cannot
+    # discard an already-correct orientation or exact left-right mirror.
+    x_axis = np.asarray(moving.GetDirection()).reshape(3, 3)[:, 0]
+    x_reflection = np.eye(3) - 2.0 * np.outer(x_axis, x_axis)
+    initial_rotations = [np.eye(3), x_reflection]
+    initial_rotations.extend(
+        fixed_axes @ np.diag(signs) @ moving_axes.T
+        for signs in itertools.product((-1, 1), repeat=3)
+    )
+
+    for initial_rotation in initial_rotations:
+        initial_translation = fixed_center - initial_rotation @ moving_center
+        refined = rigid_icp(
             moving_points,
             fixed_points,
             initial_rotation,
             initial_translation,
         )
-        # SimpleITK resampling needs the inverse: fixed output -> moving input.
-        inverse_rotation = rotation.T
-        inverse_translation = -inverse_rotation @ translation
-        candidate = sitk.Euler3DTransform()
-        candidate.SetMatrix(tuple(inverse_rotation.ravel()))
-        candidate.SetTranslation(tuple(inverse_translation))
-        aligned = sitk.Resample(
-            moving_mask,
-            fixed_mask,
-            candidate,
-            sitk.sitkNearestNeighbor,
-            0,
-            sitk.sitkUInt8,
-        )
-        aligned_array = sitk.GetArrayViewFromImage(aligned) > 0
-        denominator = fixed_array.sum() + aligned_array.sum()
-        dice = (
-            2.0 * np.logical_and(fixed_array, aligned_array).sum() / denominator
-            if denominator
-            else 0.0
-        )
-        if dice > best_dice:
-            best_dice, best_transform = float(dice), candidate
+        # Score the untouched initialization and its ICP refinement.
+        for rotation, translation in (
+            (initial_rotation, initial_translation),
+            refined,
+        ):
+            inverse_rotation = rotation.T
+            inverse_translation = -inverse_rotation @ translation
+            candidate = sitk.AffineTransform(3)
+            candidate.SetMatrix(tuple(inverse_rotation.ravel()))
+            candidate.SetTranslation(tuple(inverse_translation))
+            aligned = sitk.Resample(
+                moving_mask,
+                fixed_mask,
+                candidate,
+                sitk.sitkNearestNeighbor,
+                0,
+                sitk.sitkUInt8,
+            )
+            aligned_array = sitk.GetArrayViewFromImage(aligned) > 0
+            denominator = fixed_array.sum() + aligned_array.sum()
+            dice = (
+                2.0 * np.logical_and(fixed_array, aligned_array).sum() / denominator
+                if denominator
+                else 0.0
+            )
+            if dice > best_dice:
+                best_dice = float(dice)
+                best_transform = candidate
+                best_mirrored = np.linalg.det(rotation) < 0
 
-    print(f"    rigid surface-ICP foreground Dice={best_dice:.6f}")
+    mirror_status = "yes" if best_mirrored else "no"
+    print(
+        f"    surface-ICP foreground Dice={best_dice:.6f}, "
+        f"left-right mirror={mirror_status}"
+    )
     return best_transform
 
 def translation_from_masks(fixed, moving, fixed_mask, moving_mask):
@@ -311,7 +325,7 @@ def parse_args():
         "--transform",
         choices=("translation", "rigid", "affine"),
         default="rigid",
-        help="Default rigid mode aligns foreground boundary points with ICP."
+        help="Align foreground boundaries with ICP; left-right mirroring is allowed."
     )
     parser.add_argument(
         "--interpolation", choices=("linear", "nearest"), default="linear"
@@ -341,6 +355,8 @@ def main():
 
 if __name__ == "__main__":
     main()
+
+
 
 
 
