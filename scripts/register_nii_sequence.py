@@ -5,7 +5,9 @@ import itertools
 from pathlib import Path
 
 import numpy as np
+from scipy.ndimage import binary_erosion
 from scipy.signal import fftconvolve
+from scipy.spatial import cKDTree
 import SimpleITK as sitk
 
 
@@ -53,8 +55,6 @@ def foreground_mask(image, threshold=None):
         insideValue=1,
         outsideValue=0,
     )
-    mask = sitk.BinaryMorphologicalClosing(mask, [2, 2, 2])
-    mask = sitk.BinaryFillhole(mask)
     return sitk.Cast(mask, sitk.sitkUInt8)
 
 
@@ -68,36 +68,92 @@ def shape_distance(mask):
     )
 
 
-def mask_pca(mask, image):
-    """Return physical centroid and principal-axis basis of a binary mask."""
-    xyz = np.argwhere(sitk.GetArrayViewFromImage(mask) > 0)[:, ::-1].astype(float)
-    if len(xyz) < 4:
-        raise ValueError("Foreground mask is empty or too small.")
+def mask_surface_points(mask, image, max_points=2500):
+    """Extract a deterministic physical-space point cloud from the boundary."""
+    array = sitk.GetArrayViewFromImage(mask) > 0
+    surface = array & ~binary_erosion(array)
+    zyx = np.argwhere(surface)
+    if len(zyx) < 4:
+        raise ValueError("Foreground boundary is empty or too small.")
+    if len(zyx) > max_points:
+        stride = int(np.ceil(len(zyx) / max_points))
+        zyx = zyx[::stride]
+    xyz = zyx[:, ::-1].astype(float)
     direction = np.asarray(image.GetDirection()).reshape(3, 3)
-    points = (
+    return (
         (xyz * np.asarray(image.GetSpacing())) @ direction.T
         + np.asarray(image.GetOrigin())
     )
+
+
+def point_pca(points):
     centroid = points.mean(axis=0)
     _, eigenvectors = np.linalg.eigh(np.cov((points - centroid).T))
     return centroid, eigenvectors[:, ::-1]
 
 
+def rigid_icp(source, target, initial_rotation, initial_translation):
+    """Trimmed point-to-point ICP mapping source points onto target points."""
+    tree = cKDTree(target)
+    rotation = initial_rotation.copy()
+    translation = initial_translation.copy()
+
+    for _ in range(40):
+        transformed = source @ rotation.T + translation
+        distances, indices = tree.query(transformed)
+        keep = distances <= np.quantile(distances, 0.85)
+        selected = transformed[keep]
+        matched = target[indices[keep]]
+        source_center = selected.mean(axis=0)
+        target_center = matched.mean(axis=0)
+        u, _, vt = np.linalg.svd(
+            (selected - source_center).T @ (matched - target_center)
+        )
+        update_rotation = vt.T @ u.T
+        if np.linalg.det(update_rotation) < 0:
+            vt[-1] *= -1
+            update_rotation = vt.T @ u.T
+        update_translation = target_center - update_rotation @ source_center
+        rotation = update_rotation @ rotation
+        translation = update_rotation @ translation + update_translation
+        if (
+            np.linalg.norm(update_rotation - np.eye(3)) < 1e-7
+            and np.linalg.norm(update_translation) < 1e-4
+        ):
+            break
+
+    return rotation, translation
+
+
 def pca_rigid_from_masks(fixed, moving, fixed_mask, moving_mask):
-    """Choose the principal-axis rigid alignment with maximum mask Dice."""
-    fixed_center, fixed_axes = mask_pca(fixed_mask, fixed)
-    moving_center, moving_axes = mask_pca(moving_mask, moving)
+    """Rigidly align foreground surfaces and select by full-mask Dice."""
+    fixed_points = mask_surface_points(fixed_mask, fixed)
+    moving_points = mask_surface_points(moving_mask, moving)
+    fixed_center, fixed_axes = point_pca(fixed_points)
+    moving_center, moving_axes = point_pca(moving_points)
     fixed_array = sitk.GetArrayViewFromImage(fixed_mask) > 0
     best_dice, best_transform = -1.0, None
 
     for signs in itertools.product((-1, 1), repeat=3):
-        rotation = moving_axes @ np.diag(signs) @ fixed_axes.T
-        if np.linalg.det(rotation) < 0:
+        initial_rotation = fixed_axes @ np.diag(signs) @ moving_axes.T
+        if np.linalg.det(initial_rotation) < 0:
             continue
+        initial_translation = (
+            fixed_center - initial_rotation @ moving_center
+        )
+        # ICP maps moving points to fixed points.
+        rotation, translation = rigid_icp(
+            moving_points,
+            fixed_points,
+            initial_rotation,
+            initial_translation,
+        )
+        # SimpleITK resampling needs the inverse: fixed output -> moving input.
+        inverse_rotation = rotation.T
+        inverse_translation = -inverse_rotation @ translation
         candidate = sitk.Euler3DTransform()
-        candidate.SetCenter(tuple(fixed_center))
-        candidate.SetMatrix(tuple(rotation.ravel()))
-        candidate.SetTranslation(tuple(moving_center - fixed_center))
+        candidate.SetMatrix(tuple(inverse_rotation.ravel()))
+        candidate.SetTranslation(tuple(inverse_translation))
         aligned = sitk.Resample(
             moving_mask,
             fixed_mask,
@@ -116,7 +172,7 @@ def pca_rigid_from_masks(fixed, moving, fixed_mask, moving_mask):
         if dice > best_dice:
             best_dice, best_transform = float(dice), candidate
 
-    print(f"    PCA rigid foreground Dice={best_dice:.6f}")
+    print(f"    rigid surface-ICP foreground Dice={best_dice:.6f}")
     return best_transform
 
 def translation_from_masks(fixed, moving, fixed_mask, moving_mask):
@@ -255,7 +311,7 @@ def parse_args():
         "--transform",
         choices=("translation", "rigid", "affine"),
         default="rigid",
-        help="Default rigid mode aligns foreground principal axes and centroids."
+        help="Default rigid mode aligns foreground boundary points with ICP."
     )
     parser.add_argument(
         "--interpolation", choices=("linear", "nearest"), default="linear"
@@ -285,6 +341,9 @@ def main():
 
 if __name__ == "__main__":
     main()
+
+
+
 
 
 
