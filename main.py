@@ -1,6 +1,7 @@
 import argparse
 import torch
 import os
+import time
 from utils.load_models import load_vae, load_diffuser
 from tqdm import tqdm
 from utils.volumes import save_nifti, to_uint16
@@ -26,8 +27,12 @@ def vae_generate(model_dir, save_dir, batch_size: int = 2, batches: int = 16,
     vae.eval()
     diffuser.eval()
     count = 0
+    if device.type == "cuda":
+        torch.cuda.synchronize()
+    start_time = time.perf_counter()
+
     with torch.no_grad():
-        for batch in tqdm(range(batches), desc="Validating", unit="batch"):
+        for batch in tqdm(range(batches), desc="Generating", unit="batch"):
             z = torch.randn(batch_size, 1, 32, 32, 32, device=device, requires_grad=False)  # Sample from latent space
             z = diffuser.denoise(z, steps=ddim_steps, sampler=sampler)
             arr = vae.decode(z).squeeze().cpu().numpy()
@@ -35,6 +40,14 @@ def vae_generate(model_dir, save_dir, batch_size: int = 2, batches: int = 16,
                 img = to_uint16(arr[i, :, :, :])
                 save_nifti(img, os.path.join(save_dir, f'{count}.nii'))
                 count += 1
+
+    if device.type == "cuda":
+        torch.cuda.synchronize()
+    total_time = time.perf_counter() - start_time
+    average_time = total_time / count if count else 0.0
+    print(f"Generated {count} volumes in {total_time:.2f} seconds")
+    print(f"Average generation time: {average_time:.4f} seconds per volume")
+
 
 def main():
     parser = argparse.ArgumentParser(description="generate for vae")
@@ -60,5 +73,3 @@ def main():
 
 if __name__ == "__main__":
     main()
-
-
