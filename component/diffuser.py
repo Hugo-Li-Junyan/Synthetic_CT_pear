@@ -34,7 +34,16 @@ class LatentDiffusion(nn.Module):
         predicted_noise = self.denoise_fn(x_input)
         return F.mse_loss(predicted_noise, noise)
 
-    def denoise(self, z_noisy, steps=50, save_steps:int=None):
+    def denoise(self, z_noisy, steps=50, save_steps: int = None, sampler="ddim"):
+        sampler = sampler.lower()
+        if sampler == "ddpm":
+            return self._denoise_ddpm(z_noisy, save_steps=save_steps)
+        if sampler != "ddim":
+            raise ValueError(f"Unknown sampler ''{sampler}''. Choose ''ddim'' or ''ddpm''.")
+
+        return self._denoise_ddim(z_noisy, steps=steps, save_steps=save_steps)
+
+    def _denoise_ddim(self, z_noisy, steps=50, save_steps: int = None):
         device = z_noisy.device
 
         # Get timestep schedule
@@ -67,6 +76,31 @@ class LatentDiffusion(nn.Module):
         else:
             return z_noisy
 
+    def _denoise_ddpm(self, z_noisy, save_steps: int = None):
+        """Sample with the full stochastic DDPM reverse process."""
+        steps_z = []
+        batch_size = z_noisy.size(0)
+
+        for t_int in reversed(range(self.timesteps)):
+            t = torch.full((batch_size,), t_int, device=z_noisy.device, dtype=torch.long)
+            t_input = t.unsqueeze(1).float() / self.timesteps
+            pred_noise = self.denoise_fn(self._t_embedding(z_noisy, t_input))
+
+            alpha_t = self.alphas[t_int]
+            alpha_bar_t = self.alphas_cumprod[t_int]
+            mean = (z_noisy - self.betas[t_int] * pred_noise / (1 - alpha_bar_t).sqrt()) / alpha_t.sqrt()
+
+            if t_int > 0:
+                alpha_bar_prev = self.alphas_cumprod[t_int - 1]
+                posterior_variance = self.betas[t_int] * (1 - alpha_bar_prev) / (1 - alpha_bar_t)
+                z_noisy = mean + posterior_variance.sqrt() * torch.randn_like(z_noisy)
+            else:
+                z_noisy = mean
+
+            if save_steps and (t_int + 1) % save_steps == 0:
+                steps_z.append(z_noisy)
+
+        return steps_z if save_steps else z_noisy
     @staticmethod
     def _smart_multiply(a, b):
         # Assume a.shape == (batch_size, 1)
