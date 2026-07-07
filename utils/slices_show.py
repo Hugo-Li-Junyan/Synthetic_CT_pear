@@ -140,7 +140,7 @@ def render_cutaway_with_pyvista(volume: np.ndarray, image_size: int = 480) -> np
     pv.global_theme.background = "black"
     pv.global_theme.smooth_shading = True
 
-    smooth_mask = ndi.gaussian_filter(small_mask.astype(np.float32), sigma=0.35)
+    smooth_mask = ndi.gaussian_filter(small_mask.astype(np.float32), sigma=0.60)
 
     grid = pv.ImageData()
     grid.dimensions = smooth_mask.shape
@@ -151,9 +151,9 @@ def render_cutaway_with_pyvista(volume: np.ndarray, image_size: int = 480) -> np
         return np.zeros((image_size, image_size, 3), dtype=np.uint8)
 
     try:
-        surface = surface.smooth_taubin(n_iter=10, pass_band=0.16)
+        surface = surface.smooth_taubin(n_iter=22, pass_band=0.10)
     except Exception:
-        surface = surface.smooth(n_iter=8, relaxation_factor=0.04)
+        surface = surface.smooth(n_iter=16, relaxation_factor=0.055)
 
     x_cut = 0.5 * step * (small_mask.shape[0] - 1)
     cell_centers = surface.cell_centers().points
