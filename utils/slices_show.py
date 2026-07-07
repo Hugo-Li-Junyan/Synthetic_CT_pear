@@ -103,50 +103,61 @@ def downsample_volume_and_mask(volume: np.ndarray, mask: np.ndarray, max_size: i
 
 
 def render_cutaway_with_pyvista(volume: np.ndarray, image_size: int = 480) -> np.ndarray:
-    """Render a cleaned half-cut foreground surface using PyVista/VTK."""
+    """Render a genuinely open half-cut foreground surface using PyVista/VTK."""
     import pyvista as pv
 
     full_mask = clean_foreground_mask(volume)
     _, small_mask, step = downsample_volume_and_mask(volume, full_mask)
-
-    x_mid = small_mask.shape[0] // 2
-    half_mask = small_mask.copy()
-    half_mask[:x_mid, :, :] = False
-
-    if not np.any(half_mask):
+    if not np.any(small_mask):
         return np.zeros((image_size, image_size, 3), dtype=np.uint8)
 
     pv.global_theme.window_size = [image_size, image_size]
     pv.global_theme.background = "black"
     pv.global_theme.smooth_shading = True
 
+    smooth_mask = ndi.gaussian_filter(small_mask.astype(np.float32), sigma=1.0)
+
     grid = pv.ImageData()
-    grid.dimensions = half_mask.shape
+    grid.dimensions = smooth_mask.shape
     grid.spacing = (step, step, step)
-    grid.point_data["foreground"] = half_mask.astype(np.float32).ravel(order="F")
+    grid.point_data["foreground"] = smooth_mask.ravel(order="F")
     surface = grid.contour([0.5], scalars="foreground")
+    if surface.n_points == 0 or surface.n_cells == 0:
+        return np.zeros((image_size, image_size, 3), dtype=np.uint8)
 
-    plotter = pv.Plotter(off_screen=True, window_size=(image_size, image_size), border=False)
-    plotter.set_background("black")
-    if surface.n_points > 0:
-        plotter.add_mesh(
-            surface,
-            color=(0.72, 0.72, 0.68),
-            opacity=0.82,
-            smooth_shading=True,
-            specular=0.16,
-            roughness=0.58,
-        )
+    try:
+        surface = surface.smooth_taubin(n_iter=45, pass_band=0.06)
+    except Exception:
+        surface = surface.smooth(n_iter=35, relaxation_factor=0.08)
 
-    bounds = np.array(surface.bounds if surface.n_points > 0 else grid.bounds, dtype=np.float32)
+    x_cut = 0.5 * step * (small_mask.shape[0] - 1)
+    cell_centers = surface.cell_centers().points
+    keep_cells = np.flatnonzero(cell_centers[:, 0] >= x_cut)
+    open_surface = surface.extract_cells(keep_cells).extract_surface(algorithm="dataset_surface")
+    if open_surface.n_points == 0 or open_surface.n_cells == 0:
+        open_surface = surface
+
+    bounds = np.array(open_surface.bounds, dtype=np.float32)
     center = (
         0.5 * (bounds[0] + bounds[1]),
         0.5 * (bounds[2] + bounds[3]),
         0.5 * (bounds[4] + bounds[5]),
     )
     max_extent = max(bounds[1] - bounds[0], bounds[3] - bounds[2], bounds[5] - bounds[4])
+
+    plotter = pv.Plotter(off_screen=True, window_size=(image_size, image_size), border=False)
+    plotter.set_background("black")
+    plotter.add_mesh(
+        open_surface,
+        color=(0.74, 0.74, 0.70),
+        opacity=0.92,
+        smooth_shading=True,
+        specular=0.18,
+        roughness=0.70,
+    )
+
     plotter.camera_position = [
-        (bounds[1] + 2.2 * max_extent, center[1], center[2] + 0.08 * max_extent),
+        (bounds[0] - 2.2 * max_extent, center[1], center[2] + 0.08 * max_extent),
         center,
         (0, 0, 1),
     ]
@@ -159,7 +170,6 @@ def render_cutaway_with_pyvista(volume: np.ndarray, image_size: int = 480) -> np
         plotter.close()
 
     return np.asarray(image)[..., :3]
-
 
 def render_cutaway_fallback(volume: np.ndarray, image_size: int = 480) -> np.ndarray:
     """Fallback when PyVista is unavailable: show only the half-cut foreground projection."""
