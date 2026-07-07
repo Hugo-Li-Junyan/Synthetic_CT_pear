@@ -146,11 +146,11 @@ def render_cutaway_with_pyvista(volume: np.ndarray, image_size: int = 480) -> np
     )
     max_extent = max(bounds[1] - bounds[0], bounds[3] - bounds[2], bounds[5] - bounds[4])
     plotter.camera_position = [
-        (bounds[0] - 2.7 * max_extent, center[1] - 0.35 * max_extent, center[2] + 0.20 * max_extent),
+        (bounds[0] - 2.2 * max_extent, center[1], center[2] + 0.08 * max_extent),
         center,
         (0, 0, 1),
     ]
-    plotter.camera.zoom(1.05)
+    plotter.camera.zoom(1.18)
     plotter.enable_parallel_projection()
 
     try:
