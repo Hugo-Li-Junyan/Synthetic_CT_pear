@@ -128,7 +128,7 @@ def downsample_volume_and_mask(volume: np.ndarray, mask: np.ndarray, max_size: i
 
 
 def render_cutaway_with_pyvista(volume: np.ndarray, image_size: int = 480) -> np.ndarray:
-    """Render the earlier smooth open-mesh cutaway using PyVista/VTK."""
+    """Render the full foreground surface using PyVista/VTK."""
     import pyvista as pv
 
     full_mask = clean_foreground_mask(volume)
@@ -155,14 +155,9 @@ def render_cutaway_with_pyvista(volume: np.ndarray, image_size: int = 480) -> np
     except Exception:
         surface = surface.smooth(n_iter=16, relaxation_factor=0.055)
 
-    x_cut = 0.5 * step * (small_mask.shape[0] - 1)
-    cell_centers = surface.cell_centers().points
-    keep_cells = np.flatnonzero(cell_centers[:, 0] >= x_cut)
-    open_surface = surface.extract_cells(keep_cells).extract_surface(algorithm="dataset_surface")
-    if open_surface.n_points == 0 or open_surface.n_cells == 0:
-        open_surface = surface
+    render_surface = surface
 
-    bounds = np.array(open_surface.bounds, dtype=np.float32)
+    bounds = np.array(render_surface.bounds, dtype=np.float32)
     center = (
         0.5 * (bounds[0] + bounds[1]),
         0.5 * (bounds[2] + bounds[3]),
@@ -173,7 +168,7 @@ def render_cutaway_with_pyvista(volume: np.ndarray, image_size: int = 480) -> np
     plotter = pv.Plotter(off_screen=True, window_size=(image_size, image_size), border=False)
     plotter.set_background("black")
     plotter.add_mesh(
-        open_surface,
+        render_surface,
         color=(0.78, 0.78, 0.74),
         opacity=0.96,
         smooth_shading=True,
@@ -200,12 +195,9 @@ def render_cutaway_with_pyvista(volume: np.ndarray, image_size: int = 480) -> np
 
 
 def render_cutaway_fallback(volume: np.ndarray, image_size: int = 480) -> np.ndarray:
-    """Fallback when PyVista is unavailable: show only the half-cut foreground projection."""
+    """Fallback when PyVista is unavailable: show foreground projection."""
     mask = clean_foreground_mask(volume)
-    x_mid = mask.shape[0] // 2
-    half_mask = mask.copy()
-    half_mask[:x_mid, :, :] = False
-    projection = np.max(half_mask, axis=0).astype(np.float32)
+    projection = np.max(mask, axis=0).astype(np.float32)
     rgb = (plt.cm.gray(0.68 * projection.T)[..., :3] * 255).astype(np.uint8)
     return rgb
 
@@ -233,7 +225,7 @@ def show_random_volumes_grid(
       top-left     = axial XY middle slice
       top-right    = coronal XZ middle slice
       bottom-left  = sagittal YZ middle slice
-      bottom-right = PyVista-rendered gray 3D half-cut foreground surface
+      bottom-right = PyVista-rendered gray 3D foreground surface
 
     Returns the selected file paths, which is useful for reproducibility logs/tests.
     """
