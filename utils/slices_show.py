@@ -8,6 +8,7 @@ import matplotlib.pyplot as plt
 import nibabel as nib
 import numpy as np
 from matplotlib import gridspec
+from mpl_toolkits.mplot3d.art3d import Poly3DCollection
 
 
 NIFTI_SUFFIXES = (".nii", ".nii.gz")
@@ -65,6 +66,74 @@ def robust_limits(volume: np.ndarray) -> tuple[float, float]:
     return float(vmin), float(vmax)
 
 
+def foreground_mask(volume: np.ndarray) -> np.ndarray:
+    finite = volume[np.isfinite(volume)]
+    if finite.size == 0:
+        return np.zeros(volume.shape, dtype=bool)
+
+    low, high = np.percentile(finite, [1, 99.5])
+    if high <= low:
+        low = float(np.min(finite))
+        high = float(np.max(finite))
+    if high <= low:
+        return np.zeros(volume.shape, dtype=bool)
+
+    threshold = low + 0.08 * (high - low)
+    mask = np.asarray(volume > threshold, dtype=bool)
+    return mask
+
+
+def downsample_for_3d(volume: np.ndarray, max_size: int = 72) -> tuple[np.ndarray, int]:
+    step = max(1, int(np.ceil(max(volume.shape) / max_size)))
+    return volume[::step, ::step, ::step], step
+
+
+def set_3d_axes_clean(ax, shape: tuple[int, int, int]) -> None:
+    ax.set_axis_off()
+    ax.set_xlim(0, shape[0])
+    ax.set_ylim(0, shape[1])
+    ax.set_zlim(0, shape[2])
+    ax.set_box_aspect(shape)
+    ax.view_init(elev=18, azim=-55)
+    ax.set_facecolor("black")
+
+
+def add_half_cut_3d_panel(ax, volume: np.ndarray) -> None:
+    """Render a small gray foreground surface with the front half removed."""
+    small_volume, step = downsample_for_3d(volume)
+    mask = foreground_mask(small_volume)
+
+    # Remove one half so the volume looks cut open instead of fully closed.
+    # This keeps the +X half; switch this inequality if you prefer the opposite side exposed.
+    x_mid = mask.shape[0] // 2
+    mask[:x_mid, :, :] = False
+
+    set_3d_axes_clean(ax, tuple(size * step for size in mask.shape))
+    if not np.any(mask):
+        return
+
+    try:
+        from skimage import measure
+
+        padded = np.pad(mask.astype(np.float32), 1, mode="constant", constant_values=0)
+        verts, faces, _, _ = measure.marching_cubes(padded, level=0.5, spacing=(step, step, step))
+        verts -= step
+
+        mesh = Poly3DCollection(verts[faces], linewidths=0.0, alpha=0.86)
+        mesh.set_facecolor((0.76, 0.76, 0.72, 1.0))
+        mesh.set_edgecolor("none")
+        ax.add_collection3d(mesh)
+    except Exception:
+        points = np.argwhere(mask)
+        if points.size == 0:
+            return
+        if len(points) > 4500:
+            rng = np.random.default_rng(0)
+            points = points[rng.choice(len(points), size=4500, replace=False)]
+        points = points * step
+        ax.scatter(points[:, 0], points[:, 1], points[:, 2], s=0.15, c=[(0.76, 0.76, 0.72)], alpha=0.42)
+
+
 def show_random_volumes_grid(
     folder_path: str | Path,
     output_path: str | Path = "random_generation.png",
@@ -74,13 +143,13 @@ def show_random_volumes_grid(
     grid_cols: int = 4,
     dpi: int = 200,
 ) -> list[Path]:
-    """Plot random NIfTI volumes as a 4x4 grid of axial/coronal/sagittal slices.
+    """Plot random NIfTI volumes as a 4x4 grid of middle slices plus a 3D cutaway.
 
     Each selected volume occupies one outer grid cell. Inside that cell:
       top-left     = axial XY middle slice
       top-right    = coronal XZ middle slice
       bottom-left  = sagittal YZ middle slice
-      bottom-right = blank
+      bottom-right = gray 3D half-cut foreground rendering
 
     Returns the selected file paths, which is useful for reproducibility logs/tests.
     """
@@ -117,29 +186,18 @@ def show_random_volumes_grid(
         slices = middle_slices(volume)
 
         panels = [
-            (0, 0, "axial XY", slices["axial XY"]),
-            (0, 1, "coronal XZ", slices["coronal XZ"]),
-            (1, 0, "sagittal YZ", slices["sagittal YZ"]),
+            (0, 0, slices["axial XY"]),
+            (0, 1, slices["coronal XZ"]),
+            (1, 0, slices["sagittal YZ"]),
         ]
 
-        for panel_row, panel_col, title, image in panels:
+        for panel_row, panel_col, image in panels:
             ax = fig.add_subplot(inner[panel_row, panel_col])
             ax.imshow(image.T, cmap="gray", origin="lower", vmin=vmin, vmax=vmax)
-            ax.set_title(title, fontsize=6, pad=1)
             ax.axis("off")
 
-        blank_ax = fig.add_subplot(inner[1, 1])
-        blank_ax.axis("off")
-        blank_ax.text(
-            0.5,
-            0.5,
-            volume_path.name,
-            ha="center",
-            va="center",
-            fontsize=5,
-            wrap=True,
-            transform=blank_ax.transAxes,
-        )
+        ax_3d = fig.add_subplot(inner[1, 1], projection="3d")
+        add_half_cut_3d_panel(ax_3d, volume)
 
     output_path = Path(output_path)
     output_path.parent.mkdir(parents=True, exist_ok=True)
