@@ -156,8 +156,10 @@ def render_cutaway_with_pyvista(volume: np.ndarray, image_size: int = 480) -> np
         roughness=0.70,
     )
 
+    # View from a 45-degree diagonal in the X-Y plane while keeping the 50% cut.
+    diagonal_offset = 2.2 * max_extent / np.sqrt(2.0)
     plotter.camera_position = [
-        (bounds[0] - 2.2 * max_extent, center[1], center[2] + 0.08 * max_extent),
+        (center[0] - diagonal_offset, center[1] - diagonal_offset, center[2] + 0.08 * max_extent),
         center,
         (0, 0, 1),
     ]
