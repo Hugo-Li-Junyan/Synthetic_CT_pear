@@ -146,7 +146,7 @@ def render_cutaway_with_pyvista(volume: np.ndarray, image_size: int = 480) -> np
     )
     max_extent = max(bounds[1] - bounds[0], bounds[3] - bounds[2], bounds[5] - bounds[4])
     plotter.camera_position = [
-        (bounds[0] - 2.2 * max_extent, center[1], center[2] + 0.08 * max_extent),
+        (bounds[1] + 2.2 * max_extent, center[1], center[2] + 0.08 * max_extent),
         center,
         (0, 0, 1),
     ]
