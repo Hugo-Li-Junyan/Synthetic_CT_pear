@@ -188,7 +188,7 @@ def get_activations_from_dataloader(model, data_loader, num_samples, batch_size)
             print('\rPropagating batch %d' % i, end='', flush=True)
         x, label = batch
         with torch.no_grad():
-            pred = model(x)
+            pred = model(x.squeeze(1))
 
         if i*batch_size > pred_arr.shape[0]:
             pred_arr[i*batch_size:] = pred.cpu().numpy()
@@ -288,10 +288,10 @@ def post_process(act):
     return mu, sigma
 
 def interpolate_3d(img):
-    return F.interpolate(img, size=(256,256,256), mode='trilinear', align_corners=False)
+    return F.interpolate(img.unsqueeze(0), size=(256,256,256), mode='trilinear', align_corners=False)
 
 def calculate_fid_real(pretrained_resnet, image_dir, labels_csv, fake, batch_size,
-                       filename_column="filename", label_column="label"):
+                       filename_column="filename", label_column="browning"):
     """Calculates the FID of two paths"""
     if os.path.exists('act_real.npy'):
         act_real = np.load('act_real.npy')
@@ -350,7 +350,7 @@ def calculate_fid_baseline(pretrained_resnet, folder1, folder2, batch_size):
 
 
 if __name__ == '__main__':
-    folder_1 = r'J:\SET-Mebios_CFD-VIS-DI0327\HugoLi\PomestoreID\Pear\for_training\randomized_real_CT\folder_0'
-    folder_2 = r'J:\SET-Mebios_CFD-VIS-DI0327\HugoLi\PomestoreID\Pear\for_training\randomized_real_CT\folder_1'
+    real = r'D:\Hugo\conference_feb2025\volumes'
+    fake = r'D:\Hugo\synthetic_paper\synthetic_model\best\ddpm_volumes'
     pretrained_resnet = r"D:/Hugo/resnet_50.pth"
-    calculate_fid_baseline(pretrained_resnet, folder_1, folder_2,24)
+    calculate_fid_real(pretrained_resnet, real, r'D:\Hugo\conference_feb2025\labels.csv', fake,12)
