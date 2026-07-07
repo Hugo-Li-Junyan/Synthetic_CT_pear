@@ -66,13 +66,40 @@ def robust_limits(volume: np.ndarray) -> tuple[float, float]:
     return float(vmin), float(vmax)
 
 
-def foreground_mask_from_min_background(volume: np.ndarray) -> np.ndarray:
-    """Segment foreground using the project rule: background equals image minimum."""
-    finite = volume[np.isfinite(volume)]
-    if finite.size == 0:
+def otsu_threshold(values: np.ndarray, bins: int = 256) -> float:
+    """Compute Otsu threshold for finite voxel values using NumPy only."""
+    values = np.asarray(values, dtype=np.float32)
+    values = values[np.isfinite(values)]
+    if values.size == 0:
+        return 0.0
+
+    min_value = float(np.min(values))
+    max_value = float(np.max(values))
+    if max_value <= min_value:
+        return min_value
+
+    hist, bin_edges = np.histogram(values, bins=bins, range=(min_value, max_value))
+    hist = hist.astype(np.float64)
+    centers = 0.5 * (bin_edges[:-1] + bin_edges[1:])
+
+    weight_bg = np.cumsum(hist)
+    weight_fg = np.cumsum(hist[::-1])[::-1]
+    mean_bg = np.cumsum(hist * centers) / np.maximum(weight_bg, 1e-12)
+    mean_fg = (np.cumsum((hist * centers)[::-1]) / np.maximum(weight_fg[::-1], 1e-12))[::-1]
+
+    between_class_variance = weight_bg[:-1] * weight_fg[1:] * (mean_bg[:-1] - mean_fg[1:]) ** 2
+    if between_class_variance.size == 0 or np.all(between_class_variance <= 0):
+        return min_value
+    return float(centers[:-1][int(np.argmax(between_class_variance))])
+
+
+def foreground_mask_from_otsu(volume: np.ndarray) -> np.ndarray:
+    """Segment foreground using Otsu thresholding."""
+    finite_mask = np.isfinite(volume)
+    if not np.any(finite_mask):
         return np.zeros(volume.shape, dtype=bool)
-    background_value = float(np.min(finite))
-    return np.isfinite(volume) & (volume > background_value)
+    threshold = otsu_threshold(volume[finite_mask])
+    return finite_mask & (volume > threshold)
 
 
 def largest_connected_component(mask: np.ndarray) -> np.ndarray:
@@ -91,7 +118,7 @@ def largest_connected_component(mask: np.ndarray) -> np.ndarray:
 
 
 def clean_foreground_mask(volume: np.ndarray) -> np.ndarray:
-    mask = foreground_mask_from_min_background(volume)
+    mask = foreground_mask_from_otsu(volume)
     mask = ndi.binary_fill_holes(mask)
     mask = largest_connected_component(mask)
     return mask.astype(bool)
