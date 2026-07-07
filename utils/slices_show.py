@@ -130,7 +130,9 @@ def render_cutaway_with_pyvista(volume: np.ndarray, image_size: int = 480) -> np
     except Exception:
         surface = surface.smooth(n_iter=35, relaxation_factor=0.08)
 
-    x_cut = 0.5 * step * (small_mask.shape[0] - 1)
+    # Remove a bit more than half from the camera side. At the small panel size,
+    # an exact 50/50 cut can still look visually closed; this makes the opening obvious.
+    x_cut = 0.56 * step * (small_mask.shape[0] - 1)
     cell_centers = surface.cell_centers().points
     keep_cells = np.flatnonzero(cell_centers[:, 0] >= x_cut)
     open_surface = surface.extract_cells(keep_cells).extract_surface(algorithm="dataset_surface")
@@ -150,11 +152,29 @@ def render_cutaway_with_pyvista(volume: np.ndarray, image_size: int = 480) -> np
     plotter.add_mesh(
         open_surface,
         color=(0.74, 0.74, 0.70),
-        opacity=0.92,
+        opacity=0.84,
         smooth_shading=True,
         specular=0.18,
         roughness=0.70,
+        culling=False,
     )
+
+    try:
+        rim = open_surface.extract_feature_edges(
+            boundary_edges=True,
+            feature_edges=False,
+            manifold_edges=False,
+            non_manifold_edges=False,
+        )
+        if rim.n_points > 0:
+            plotter.add_mesh(
+                rim.tube(radius=0.012 * max_extent),
+                color=(0.18, 0.18, 0.17),
+                opacity=0.95,
+                smooth_shading=True,
+            )
+    except Exception:
+        pass
 
     plotter.camera_position = [
         (bounds[0] - 2.2 * max_extent, center[1], center[2] + 0.08 * max_extent),
