@@ -158,9 +158,9 @@ def render_cutaway_with_pyvista(volume: np.ndarray, image_size: int = 480) -> np
 
     pv.global_theme.window_size = [image_size, image_size]
     pv.global_theme.background = "black"
-    pv.global_theme.smooth_shading = True
+    pv.global_theme.smooth_shading = False
 
-    smooth_mask = ndi.gaussian_filter(small_mask.astype(np.float32), sigma=1.0)
+    smooth_mask = ndi.gaussian_filter(small_mask.astype(np.float32), sigma=0.55)
 
     grid = pv.ImageData()
     grid.dimensions = smooth_mask.shape
@@ -171,9 +171,9 @@ def render_cutaway_with_pyvista(volume: np.ndarray, image_size: int = 480) -> np
         return np.zeros((image_size, image_size, 3), dtype=np.uint8)
 
     try:
-        surface = surface.smooth_taubin(n_iter=45, pass_band=0.06)
+        surface = surface.smooth_taubin(n_iter=18, pass_band=0.12)
     except Exception:
-        surface = surface.smooth(n_iter=35, relaxation_factor=0.08)
+        surface = surface.smooth(n_iter=14, relaxation_factor=0.05)
 
     x_cut = 0.5 * step * (small_mask.shape[0] - 1)
     cell_centers = surface.cell_centers().points
@@ -196,9 +196,8 @@ def render_cutaway_with_pyvista(volume: np.ndarray, image_size: int = 480) -> np
         open_surface,
         color=(0.74, 0.74, 0.70),
         opacity=0.92,
-        smooth_shading=True,
-        specular=0.18,
-        roughness=0.70,
+        smooth_shading=False,
+        lighting=False,
     )
 
     # View from a 45-degree diagonal in the X-Y plane while keeping the 50% cut.
