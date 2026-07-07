@@ -66,59 +66,39 @@ def robust_limits(volume: np.ndarray) -> tuple[float, float]:
     return float(vmin), float(vmax)
 
 
-def multi_otsu_thresholds(values: np.ndarray, classes: int = 3, bins: int = 128) -> np.ndarray:
-    """Compute multi-Otsu thresholds. Optimized direct search for 3 classes."""
+def otsu_threshold(values: np.ndarray, bins: int = 256) -> float:
+    """Compute standard single-threshold Otsu for finite voxel values."""
     values = np.asarray(values, dtype=np.float32)
     values = values[np.isfinite(values)]
     if values.size == 0:
-        return np.array([0.0], dtype=np.float32)
+        return 0.0
 
     min_value = float(np.min(values))
     max_value = float(np.max(values))
     if max_value <= min_value:
-        return np.array([min_value], dtype=np.float32)
+        return min_value
 
     hist, bin_edges = np.histogram(values, bins=bins, range=(min_value, max_value))
     hist = hist.astype(np.float64)
     centers = 0.5 * (bin_edges[:-1] + bin_edges[1:])
-    probability = hist / max(hist.sum(), 1.0)
 
-    if classes != 3:
-        raise ValueError("This helper currently supports classes=3 only")
+    weight_bg = np.cumsum(hist)
+    weight_fg = np.cumsum(hist[::-1])[::-1]
+    mean_bg = np.cumsum(hist * centers) / np.maximum(weight_bg, 1e-12)
+    mean_fg = (np.cumsum((hist * centers)[::-1]) / np.maximum(weight_fg[::-1], 1e-12))[::-1]
 
-    omega = np.cumsum(probability)
-    mu = np.cumsum(probability * centers)
-    mu_total = mu[-1]
-
-    best_score = -np.inf
-    best_i, best_j = 0, 1
-    for i in range(1, bins - 1):
-        w0 = omega[i]
-        if w0 <= 1e-12:
-            continue
-        m0 = mu[i] / w0
-        for j in range(i + 1, bins):
-            w1 = omega[j] - omega[i]
-            w2 = 1.0 - omega[j]
-            if w1 <= 1e-12 or w2 <= 1e-12:
-                continue
-            m1 = (mu[j] - mu[i]) / w1
-            m2 = (mu_total - mu[j]) / w2
-            score = w0 * (m0 - mu_total) ** 2 + w1 * (m1 - mu_total) ** 2 + w2 * (m2 - mu_total) ** 2
-            if score > best_score:
-                best_score = score
-                best_i, best_j = i, j
-
-    return np.array([centers[best_i], centers[best_j]], dtype=np.float32)
+    between_class_variance = weight_bg[:-1] * weight_fg[1:] * (mean_bg[:-1] - mean_fg[1:]) ** 2
+    if between_class_variance.size == 0 or np.all(between_class_variance <= 0):
+        return min_value
+    return float(centers[:-1][int(np.argmax(between_class_variance))])
 
 
 def foreground_mask_from_otsu(volume: np.ndarray) -> np.ndarray:
-    """Segment foreground using 3-class multi-Otsu; keep only the highest class."""
+    """Segment foreground using standard Otsu thresholding."""
     finite_mask = np.isfinite(volume)
     if not np.any(finite_mask):
         return np.zeros(volume.shape, dtype=bool)
-    thresholds = multi_otsu_thresholds(volume[finite_mask], classes=3)
-    threshold = float(thresholds[-1])
+    threshold = otsu_threshold(volume[finite_mask])
     return finite_mask & (volume > threshold)
 
 def largest_connected_component(mask: np.ndarray) -> np.ndarray:
@@ -160,7 +140,7 @@ def render_cutaway_with_pyvista(volume: np.ndarray, image_size: int = 480) -> np
     pv.global_theme.background = "black"
     pv.global_theme.smooth_shading = True
 
-    smooth_mask = ndi.gaussian_filter(small_mask.astype(np.float32), sigma=1.0)
+    smooth_mask = ndi.gaussian_filter(small_mask.astype(np.float32), sigma=0.35)
 
     grid = pv.ImageData()
     grid.dimensions = smooth_mask.shape
@@ -171,9 +151,9 @@ def render_cutaway_with_pyvista(volume: np.ndarray, image_size: int = 480) -> np
         return np.zeros((image_size, image_size, 3), dtype=np.uint8)
 
     try:
-        surface = surface.smooth_taubin(n_iter=45, pass_band=0.06)
+        surface = surface.smooth_taubin(n_iter=10, pass_band=0.16)
     except Exception:
-        surface = surface.smooth(n_iter=35, relaxation_factor=0.08)
+        surface = surface.smooth(n_iter=8, relaxation_factor=0.04)
 
     x_cut = 0.5 * step * (small_mask.shape[0] - 1)
     cell_centers = surface.cell_centers().points
@@ -194,11 +174,11 @@ def render_cutaway_with_pyvista(volume: np.ndarray, image_size: int = 480) -> np
     plotter.set_background("black")
     plotter.add_mesh(
         open_surface,
-        color=(0.74, 0.74, 0.70),
-        opacity=0.92,
+        color=(0.78, 0.78, 0.74),
+        opacity=0.96,
         smooth_shading=True,
-        specular=0.18,
-        roughness=0.70,
+        specular=0.08,
+        roughness=0.88,
     )
 
     # View from a 45-degree diagonal in the X-Y plane while keeping the 50% cut.
