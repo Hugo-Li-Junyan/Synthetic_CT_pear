@@ -66,26 +66,18 @@ def robust_limits(volume: np.ndarray) -> tuple[float, float]:
     return float(vmin), float(vmax)
 
 
-def foreground_mask(volume: np.ndarray) -> np.ndarray:
+def foreground_mask_from_min_background(volume: np.ndarray) -> np.ndarray:
+    """Segment foreground using the project rule: background equals image minimum."""
     finite = volume[np.isfinite(volume)]
     if finite.size == 0:
         return np.zeros(volume.shape, dtype=bool)
-
-    low, high = np.percentile(finite, [1, 99.5])
-    if high <= low:
-        low = float(np.min(finite))
-        high = float(np.max(finite))
-    if high <= low:
-        return np.zeros(volume.shape, dtype=bool)
-
-    threshold = low + 0.08 * (high - low)
-    mask = np.asarray(volume > threshold, dtype=bool)
-    return mask
+    background_value = float(np.min(finite))
+    return np.isfinite(volume) & (volume > background_value)
 
 
-def downsample_for_3d(volume: np.ndarray, max_size: int = 72) -> tuple[np.ndarray, int]:
+def downsample_volume_and_mask(volume: np.ndarray, mask: np.ndarray, max_size: int = 96) -> tuple[np.ndarray, np.ndarray, int]:
     step = max(1, int(np.ceil(max(volume.shape) / max_size)))
-    return volume[::step, ::step, ::step], step
+    return volume[::step, ::step, ::step], mask[::step, ::step, ::step], step
 
 
 def set_3d_axes_clean(ax, shape: tuple[int, int, int]) -> None:
@@ -96,42 +88,79 @@ def set_3d_axes_clean(ax, shape: tuple[int, int, int]) -> None:
     ax.set_box_aspect(shape)
     ax.view_init(elev=18, azim=-55)
     ax.set_facecolor("black")
+    ax.grid(False)
+
+
+def add_cut_face(ax, volume: np.ndarray, mask: np.ndarray, x_index: int, step: int) -> None:
+    """Draw the exposed middle cut face as a grayscale texture."""
+    if x_index < 0 or x_index >= volume.shape[0]:
+        return
+
+    cut_mask = mask[x_index, :, :]
+    if not np.any(cut_mask):
+        return
+
+    cut_values = volume[x_index, :, :]
+    vmin, vmax = robust_limits(cut_values[cut_mask])
+    normalized = np.clip((cut_values - vmin) / max(vmax - vmin, 1e-8), 0.0, 1.0)
+
+    colors = plt.cm.gray(normalized)
+    colors[..., 3] = np.where(cut_mask, 0.98, 0.0)
+
+    y = np.arange(volume.shape[1]) * step
+    z = np.arange(volume.shape[2]) * step
+    yy, zz = np.meshgrid(y, z, indexing="ij")
+    xx = np.full_like(yy, fill_value=x_index * step, dtype=np.float32)
+
+    ax.plot_surface(
+        xx,
+        yy,
+        zz,
+        rstride=1,
+        cstride=1,
+        facecolors=colors,
+        shade=False,
+        antialiased=False,
+        linewidth=0,
+    )
 
 
 def add_half_cut_3d_panel(ax, volume: np.ndarray) -> None:
-    """Render a small gray foreground surface with the front half removed."""
-    small_volume, step = downsample_for_3d(volume)
-    mask = foreground_mask(small_volume)
+    """Render min-background segmented foreground, cut in half, in soft gray."""
+    full_mask = foreground_mask_from_min_background(volume)
+    small_volume, small_mask, step = downsample_volume_and_mask(volume, full_mask)
 
-    # Remove one half so the volume looks cut open instead of fully closed.
-    # This keeps the +X half; switch this inequality if you prefer the opposite side exposed.
-    x_mid = mask.shape[0] // 2
-    mask[:x_mid, :, :] = False
+    x_mid = small_mask.shape[0] // 2
+    half_mask = small_mask.copy()
+    half_mask[:x_mid, :, :] = False
 
-    set_3d_axes_clean(ax, tuple(size * step for size in mask.shape))
-    if not np.any(mask):
+    world_shape = tuple(size * step for size in small_mask.shape)
+    set_3d_axes_clean(ax, world_shape)
+    if not np.any(half_mask):
         return
+
+    add_cut_face(ax, small_volume, small_mask, x_mid, step)
 
     try:
         from skimage import measure
 
-        padded = np.pad(mask.astype(np.float32), 1, mode="constant", constant_values=0)
+        padded = np.pad(half_mask.astype(np.float32), 1, mode="constant", constant_values=0)
         verts, faces, _, _ = measure.marching_cubes(padded, level=0.5, spacing=(step, step, step))
         verts -= step
 
-        mesh = Poly3DCollection(verts[faces], linewidths=0.0, alpha=0.86)
-        mesh.set_facecolor((0.76, 0.76, 0.72, 1.0))
+        mesh = Poly3DCollection(verts[faces], linewidths=0.0, alpha=0.62)
+        mesh.set_facecolor((0.78, 0.78, 0.74, 1.0))
         mesh.set_edgecolor("none")
         ax.add_collection3d(mesh)
     except Exception:
-        points = np.argwhere(mask)
+        points = np.argwhere(half_mask)
         if points.size == 0:
             return
-        if len(points) > 4500:
+        if len(points) > 6000:
             rng = np.random.default_rng(0)
-            points = points[rng.choice(len(points), size=4500, replace=False)]
+            points = points[rng.choice(len(points), size=6000, replace=False)]
         points = points * step
-        ax.scatter(points[:, 0], points[:, 1], points[:, 2], s=0.15, c=[(0.76, 0.76, 0.72)], alpha=0.42)
+        ax.scatter(points[:, 0], points[:, 1], points[:, 2], s=0.18, c=[(0.78, 0.78, 0.74)], alpha=0.38)
 
 
 def show_random_volumes_grid(
