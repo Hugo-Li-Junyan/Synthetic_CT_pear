@@ -103,11 +103,11 @@ def downsample_volume_and_mask(volume: np.ndarray, mask: np.ndarray, max_size: i
 
 
 def render_cutaway_with_pyvista(volume: np.ndarray, image_size: int = 480) -> np.ndarray:
-    """Render a cleaned half-cut foreground using PyVista/VTK off-screen rendering."""
+    """Render a cleaned half-cut foreground surface using PyVista/VTK."""
     import pyvista as pv
 
     full_mask = clean_foreground_mask(volume)
-    small_volume, small_mask, step = downsample_volume_and_mask(volume, full_mask)
+    _, small_mask, step = downsample_volume_and_mask(volume, full_mask)
 
     x_mid = small_mask.shape[0] // 2
     half_mask = small_mask.copy()
@@ -132,32 +132,10 @@ def render_cutaway_with_pyvista(volume: np.ndarray, image_size: int = 480) -> np
         plotter.add_mesh(
             surface,
             color=(0.72, 0.72, 0.68),
-            opacity=0.55,
+            opacity=0.82,
             smooth_shading=True,
-            specular=0.12,
-            roughness=0.65,
-        )
-
-    # Add the actual middle cut plane. This is what was missing visually before.
-    cut_values = small_volume[x_mid, :, :].copy()
-    cut_mask = small_mask[x_mid, :, :]
-    if np.any(cut_mask):
-        y = np.arange(small_volume.shape[1], dtype=np.float32) * step
-        z = np.arange(small_volume.shape[2], dtype=np.float32) * step
-        yy, zz = np.meshgrid(y, z, indexing="ij")
-        xx = np.full_like(yy, x_mid * step, dtype=np.float32)
-        plane = pv.StructuredGrid(xx, yy, zz)
-        plane.point_data["intensity"] = cut_values.ravel(order="F")
-
-        vmin, vmax = robust_limits(cut_values[cut_mask])
-        plotter.add_mesh(
-            plane,
-            scalars="intensity",
-            cmap="gray",
-            clim=(vmin, vmax),
-            opacity=1.0,
-            show_scalar_bar=False,
-            lighting=False,
+            specular=0.16,
+            roughness=0.58,
         )
 
     plotter.camera_position = "yz"
@@ -175,18 +153,13 @@ def render_cutaway_with_pyvista(volume: np.ndarray, image_size: int = 480) -> np
 
 
 def render_cutaway_fallback(volume: np.ndarray, image_size: int = 480) -> np.ndarray:
-    """Fallback when PyVista is unavailable: show a clean cut-face projection."""
+    """Fallback when PyVista is unavailable: show only the half-cut foreground projection."""
     mask = clean_foreground_mask(volume)
     x_mid = mask.shape[0] // 2
-    cut = volume[x_mid, :, :].copy()
-    cut_mask = mask[x_mid, :, :]
-    if np.any(cut_mask):
-        vmin, vmax = robust_limits(cut[cut_mask])
-    else:
-        vmin, vmax = robust_limits(cut)
-    cut = np.clip((cut - vmin) / max(vmax - vmin, 1e-8), 0.0, 1.0)
-    cut = np.where(cut_mask, cut, 0.0)
-    rgb = (plt.cm.gray(cut.T)[..., :3] * 255).astype(np.uint8)
+    half_mask = mask.copy()
+    half_mask[:x_mid, :, :] = False
+    projection = np.max(half_mask, axis=0).astype(np.float32)
+    rgb = (plt.cm.gray(0.68 * projection.T)[..., :3] * 255).astype(np.uint8)
     return rgb
 
 
@@ -194,7 +167,7 @@ def render_cutaway_image(volume: np.ndarray, image_size: int = 480) -> np.ndarra
     try:
         return render_cutaway_with_pyvista(volume, image_size=image_size)
     except Exception as exc:
-        print(f"Warning: PyVista rendering failed; using fallback cut plane. Reason: {exc}")
+        print(f"Warning: PyVista rendering failed; using fallback half-cut projection. Reason: {exc}")
         return render_cutaway_fallback(volume, image_size=image_size)
 
 
@@ -213,7 +186,7 @@ def show_random_volumes_grid(
       top-left     = axial XY middle slice
       top-right    = coronal XZ middle slice
       bottom-left  = sagittal YZ middle slice
-      bottom-right = PyVista-rendered gray 3D half-cut foreground
+      bottom-right = PyVista-rendered gray 3D half-cut foreground surface
 
     Returns the selected file paths, which is useful for reproducibility logs/tests.
     """
