@@ -8,7 +8,7 @@ import matplotlib.pyplot as plt
 import nibabel as nib
 import numpy as np
 from matplotlib import gridspec
-from mpl_toolkits.mplot3d.art3d import Poly3DCollection
+from scipy import ndimage as ndi
 
 
 NIFTI_SUFFIXES = (".nii", ".nii.gz")
@@ -75,92 +75,127 @@ def foreground_mask_from_min_background(volume: np.ndarray) -> np.ndarray:
     return np.isfinite(volume) & (volume > background_value)
 
 
+def largest_connected_component(mask: np.ndarray) -> np.ndarray:
+    """Remove noisy foreground islands and keep only the main object."""
+    if not np.any(mask):
+        return mask
+
+    labels, count = ndi.label(mask)
+    if count <= 1:
+        return mask
+
+    component_sizes = np.bincount(labels.ravel())
+    component_sizes[0] = 0
+    largest_label = int(np.argmax(component_sizes))
+    return labels == largest_label
+
+
+def clean_foreground_mask(volume: np.ndarray) -> np.ndarray:
+    mask = foreground_mask_from_min_background(volume)
+    mask = ndi.binary_fill_holes(mask)
+    mask = largest_connected_component(mask)
+    return mask.astype(bool)
+
+
 def downsample_volume_and_mask(volume: np.ndarray, mask: np.ndarray, max_size: int = 96) -> tuple[np.ndarray, np.ndarray, int]:
     step = max(1, int(np.ceil(max(volume.shape) / max_size)))
     return volume[::step, ::step, ::step], mask[::step, ::step, ::step], step
 
 
-def set_3d_axes_clean(ax, shape: tuple[int, int, int]) -> None:
-    ax.set_axis_off()
-    ax.set_xlim(0, shape[0])
-    ax.set_ylim(0, shape[1])
-    ax.set_zlim(0, shape[2])
-    ax.set_box_aspect(shape)
-    ax.view_init(elev=18, azim=-55)
-    ax.set_facecolor("black")
-    ax.grid(False)
+def render_cutaway_with_pyvista(volume: np.ndarray, image_size: int = 480) -> np.ndarray:
+    """Render a cleaned half-cut foreground using PyVista/VTK off-screen rendering."""
+    import pyvista as pv
 
-
-def add_cut_face(ax, volume: np.ndarray, mask: np.ndarray, x_index: int, step: int) -> None:
-    """Draw the exposed middle cut face as a grayscale texture."""
-    if x_index < 0 or x_index >= volume.shape[0]:
-        return
-
-    cut_mask = mask[x_index, :, :]
-    if not np.any(cut_mask):
-        return
-
-    cut_values = volume[x_index, :, :]
-    vmin, vmax = robust_limits(cut_values[cut_mask])
-    normalized = np.clip((cut_values - vmin) / max(vmax - vmin, 1e-8), 0.0, 1.0)
-
-    colors = plt.cm.gray(normalized)
-    colors[..., 3] = np.where(cut_mask, 0.98, 0.0)
-
-    y = np.arange(volume.shape[1]) * step
-    z = np.arange(volume.shape[2]) * step
-    yy, zz = np.meshgrid(y, z, indexing="ij")
-    xx = np.full_like(yy, fill_value=x_index * step, dtype=np.float32)
-
-    ax.plot_surface(
-        xx,
-        yy,
-        zz,
-        rstride=1,
-        cstride=1,
-        facecolors=colors,
-        shade=False,
-        antialiased=False,
-        linewidth=0,
-    )
-
-
-def add_half_cut_3d_panel(ax, volume: np.ndarray) -> None:
-    """Render min-background segmented foreground, cut in half, in soft gray."""
-    full_mask = foreground_mask_from_min_background(volume)
+    full_mask = clean_foreground_mask(volume)
     small_volume, small_mask, step = downsample_volume_and_mask(volume, full_mask)
 
     x_mid = small_mask.shape[0] // 2
     half_mask = small_mask.copy()
     half_mask[:x_mid, :, :] = False
 
-    world_shape = tuple(size * step for size in small_mask.shape)
-    set_3d_axes_clean(ax, world_shape)
     if not np.any(half_mask):
-        return
+        return np.zeros((image_size, image_size, 3), dtype=np.uint8)
 
-    add_cut_face(ax, small_volume, small_mask, x_mid, step)
+    pv.global_theme.window_size = [image_size, image_size]
+    pv.global_theme.background = "black"
+    pv.global_theme.smooth_shading = True
+
+    grid = pv.ImageData()
+    grid.dimensions = half_mask.shape
+    grid.spacing = (step, step, step)
+    grid.point_data["foreground"] = half_mask.astype(np.float32).ravel(order="F")
+    surface = grid.contour([0.5], scalars="foreground")
+
+    plotter = pv.Plotter(off_screen=True, window_size=(image_size, image_size), border=False)
+    plotter.set_background("black")
+    if surface.n_points > 0:
+        plotter.add_mesh(
+            surface,
+            color=(0.72, 0.72, 0.68),
+            opacity=0.55,
+            smooth_shading=True,
+            specular=0.12,
+            roughness=0.65,
+        )
+
+    # Add the actual middle cut plane. This is what was missing visually before.
+    cut_values = small_volume[x_mid, :, :].copy()
+    cut_mask = small_mask[x_mid, :, :]
+    if np.any(cut_mask):
+        y = np.arange(small_volume.shape[1], dtype=np.float32) * step
+        z = np.arange(small_volume.shape[2], dtype=np.float32) * step
+        yy, zz = np.meshgrid(y, z, indexing="ij")
+        xx = np.full_like(yy, x_mid * step, dtype=np.float32)
+        plane = pv.StructuredGrid(xx, yy, zz)
+        plane.point_data["intensity"] = cut_values.ravel(order="F")
+
+        vmin, vmax = robust_limits(cut_values[cut_mask])
+        plotter.add_mesh(
+            plane,
+            scalars="intensity",
+            cmap="gray",
+            clim=(vmin, vmax),
+            opacity=1.0,
+            show_scalar_bar=False,
+            lighting=False,
+        )
+
+    plotter.camera_position = "yz"
+    plotter.camera.azimuth = -35
+    plotter.camera.elevation = 18
+    plotter.camera.zoom(1.35)
+    plotter.enable_parallel_projection()
 
     try:
-        from skimage import measure
+        image = plotter.screenshot(return_img=True)
+    finally:
+        plotter.close()
 
-        padded = np.pad(half_mask.astype(np.float32), 1, mode="constant", constant_values=0)
-        verts, faces, _, _ = measure.marching_cubes(padded, level=0.5, spacing=(step, step, step))
-        verts -= step
+    return np.asarray(image)[..., :3]
 
-        mesh = Poly3DCollection(verts[faces], linewidths=0.0, alpha=0.62)
-        mesh.set_facecolor((0.78, 0.78, 0.74, 1.0))
-        mesh.set_edgecolor("none")
-        ax.add_collection3d(mesh)
-    except Exception:
-        points = np.argwhere(half_mask)
-        if points.size == 0:
-            return
-        if len(points) > 6000:
-            rng = np.random.default_rng(0)
-            points = points[rng.choice(len(points), size=6000, replace=False)]
-        points = points * step
-        ax.scatter(points[:, 0], points[:, 1], points[:, 2], s=0.18, c=[(0.78, 0.78, 0.74)], alpha=0.38)
+
+def render_cutaway_fallback(volume: np.ndarray, image_size: int = 480) -> np.ndarray:
+    """Fallback when PyVista is unavailable: show a clean cut-face projection."""
+    mask = clean_foreground_mask(volume)
+    x_mid = mask.shape[0] // 2
+    cut = volume[x_mid, :, :].copy()
+    cut_mask = mask[x_mid, :, :]
+    if np.any(cut_mask):
+        vmin, vmax = robust_limits(cut[cut_mask])
+    else:
+        vmin, vmax = robust_limits(cut)
+    cut = np.clip((cut - vmin) / max(vmax - vmin, 1e-8), 0.0, 1.0)
+    cut = np.where(cut_mask, cut, 0.0)
+    rgb = (plt.cm.gray(cut.T)[..., :3] * 255).astype(np.uint8)
+    return rgb
+
+
+def render_cutaway_image(volume: np.ndarray, image_size: int = 480) -> np.ndarray:
+    try:
+        return render_cutaway_with_pyvista(volume, image_size=image_size)
+    except Exception as exc:
+        print(f"Warning: PyVista rendering failed; using fallback cut plane. Reason: {exc}")
+        return render_cutaway_fallback(volume, image_size=image_size)
 
 
 def show_random_volumes_grid(
@@ -178,7 +213,7 @@ def show_random_volumes_grid(
       top-left     = axial XY middle slice
       top-right    = coronal XZ middle slice
       bottom-left  = sagittal YZ middle slice
-      bottom-right = gray 3D half-cut foreground rendering
+      bottom-right = PyVista-rendered gray 3D half-cut foreground
 
     Returns the selected file paths, which is useful for reproducibility logs/tests.
     """
@@ -225,8 +260,9 @@ def show_random_volumes_grid(
             ax.imshow(image.T, cmap="gray", origin="lower", vmin=vmin, vmax=vmax)
             ax.axis("off")
 
-        ax_3d = fig.add_subplot(inner[1, 1], projection="3d")
-        add_half_cut_3d_panel(ax_3d, volume)
+        ax_3d = fig.add_subplot(inner[1, 1])
+        ax_3d.imshow(render_cutaway_image(volume), origin="upper")
+        ax_3d.axis("off")
 
     output_path = Path(output_path)
     output_path.parent.mkdir(parents=True, exist_ok=True)
