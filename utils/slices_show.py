@@ -170,10 +170,11 @@ def render_cutaway_with_pyvista(volume: np.ndarray, image_size: int = 480) -> np
     plotter.add_mesh(
         render_surface,
         color=(0.78, 0.78, 0.74),
-        opacity=0.96,
+        opacity=1.0,
         smooth_shading=True,
         specular=0.08,
         roughness=0.88,
+        culling="back",
     )
 
     # View from a 45-degree diagonal in the X-Y plane while keeping the 50% cut.
