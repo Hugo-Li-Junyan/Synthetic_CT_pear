@@ -66,40 +66,13 @@ def robust_limits(volume: np.ndarray) -> tuple[float, float]:
     return float(vmin), float(vmax)
 
 
-def otsu_threshold(values: np.ndarray, bins: int = 256) -> float:
-    """Compute Otsu threshold for finite voxel values using NumPy only."""
-    values = np.asarray(values, dtype=np.float32)
-    values = values[np.isfinite(values)]
-    if values.size == 0:
-        return 0.0
-
-    min_value = float(np.min(values))
-    max_value = float(np.max(values))
-    if max_value <= min_value:
-        return min_value
-
-    hist, bin_edges = np.histogram(values, bins=bins, range=(min_value, max_value))
-    hist = hist.astype(np.float64)
-    centers = 0.5 * (bin_edges[:-1] + bin_edges[1:])
-
-    weight_bg = np.cumsum(hist)
-    weight_fg = np.cumsum(hist[::-1])[::-1]
-    mean_bg = np.cumsum(hist * centers) / np.maximum(weight_bg, 1e-12)
-    mean_fg = (np.cumsum((hist * centers)[::-1]) / np.maximum(weight_fg[::-1], 1e-12))[::-1]
-
-    between_class_variance = weight_bg[:-1] * weight_fg[1:] * (mean_bg[:-1] - mean_fg[1:]) ** 2
-    if between_class_variance.size == 0 or np.all(between_class_variance <= 0):
-        return min_value
-    return float(centers[:-1][int(np.argmax(between_class_variance))])
-
-
-def foreground_mask_from_otsu(volume: np.ndarray) -> np.ndarray:
-    """Segment foreground using Otsu thresholding."""
-    finite_mask = np.isfinite(volume)
-    if not np.any(finite_mask):
+def foreground_mask_from_min_background(volume: np.ndarray) -> np.ndarray:
+    """Segment foreground using the rule: background equals image minimum."""
+    finite = volume[np.isfinite(volume)]
+    if finite.size == 0:
         return np.zeros(volume.shape, dtype=bool)
-    threshold = otsu_threshold(volume[finite_mask])
-    return finite_mask & (volume > threshold)
+    background_value = float(np.min(finite))
+    return np.isfinite(volume) & (volume > background_value)
 
 
 def largest_connected_component(mask: np.ndarray) -> np.ndarray:
@@ -118,7 +91,10 @@ def largest_connected_component(mask: np.ndarray) -> np.ndarray:
 
 
 def clean_foreground_mask(volume: np.ndarray) -> np.ndarray:
-    return foreground_mask_from_otsu(volume).astype(bool)
+    mask = foreground_mask_from_min_background(volume)
+    mask = ndi.binary_fill_holes(mask)
+    mask = largest_connected_component(mask)
+    return mask.astype(bool)
 
 
 def downsample_volume_and_mask(volume: np.ndarray, mask: np.ndarray, max_size: int = 96) -> tuple[np.ndarray, np.ndarray, int]:
@@ -127,40 +103,41 @@ def downsample_volume_and_mask(volume: np.ndarray, mask: np.ndarray, max_size: i
 
 
 def render_cutaway_with_pyvista(volume: np.ndarray, image_size: int = 480) -> np.ndarray:
-    """Otsu-threshold, remove half of the voxel volume, then render it as a 3D surface."""
+    """Render the earlier smooth open-mesh cutaway using PyVista/VTK."""
     import pyvista as pv
 
-    full_mask = foreground_mask_from_otsu(volume)
+    full_mask = clean_foreground_mask(volume)
     _, small_mask, step = downsample_volume_and_mask(volume, full_mask)
     if not np.any(small_mask):
-        return np.zeros((image_size, image_size, 3), dtype=np.uint8)
-
-    # Actual requested cut: remove half of the thresholded voxel volume.
-    x_mid = small_mask.shape[0] // 2
-    half_mask = small_mask.copy()
-    half_mask[:x_mid, :, :] = False
-    if not np.any(half_mask):
         return np.zeros((image_size, image_size, 3), dtype=np.uint8)
 
     pv.global_theme.window_size = [image_size, image_size]
     pv.global_theme.background = "black"
     pv.global_theme.smooth_shading = True
 
-    grid = pv.ImageData()
-    grid.dimensions = half_mask.shape
-    grid.spacing = (step, step, step)
-    grid.point_data["foreground"] = half_mask.astype(np.float32).ravel(order="F")
+    smooth_mask = ndi.gaussian_filter(small_mask.astype(np.float32), sigma=1.0)
 
+    grid = pv.ImageData()
+    grid.dimensions = smooth_mask.shape
+    grid.spacing = (step, step, step)
+    grid.point_data["foreground"] = smooth_mask.ravel(order="F")
     surface = grid.contour([0.5], scalars="foreground")
     if surface.n_points == 0 or surface.n_cells == 0:
         return np.zeros((image_size, image_size, 3), dtype=np.uint8)
 
     try:
-        surface = surface.smooth_taubin(n_iter=25, pass_band=0.08)
+        surface = surface.smooth_taubin(n_iter=45, pass_band=0.06)
     except Exception:
-        pass
+        surface = surface.smooth(n_iter=35, relaxation_factor=0.08)
 
-    bounds = np.array(surface.bounds, dtype=np.float32)
+    x_cut = 0.5 * step * (small_mask.shape[0] - 1)
+    cell_centers = surface.cell_centers().points
+    keep_cells = np.flatnonzero(cell_centers[:, 0] >= x_cut)
+    open_surface = surface.extract_cells(keep_cells).extract_surface(algorithm="dataset_surface")
+    if open_surface.n_points == 0 or open_surface.n_cells == 0:
+        open_surface = surface
+
+    bounds = np.array(open_surface.bounds, dtype=np.float32)
     center = (
         0.5 * (bounds[0] + bounds[1]),
         0.5 * (bounds[2] + bounds[3]),
@@ -171,21 +148,21 @@ def render_cutaway_with_pyvista(volume: np.ndarray, image_size: int = 480) -> np
     plotter = pv.Plotter(off_screen=True, window_size=(image_size, image_size), border=False)
     plotter.set_background("black")
     plotter.add_mesh(
-        surface,
+        open_surface,
         color=(0.74, 0.74, 0.70),
-        opacity=0.96,
+        opacity=0.92,
         smooth_shading=True,
-        specular=0.22,
-        roughness=0.58,
+        specular=0.18,
+        roughness=0.70,
     )
 
-    # Perspective + oblique camera makes it read as 3D in the small panel.
     plotter.camera_position = [
-        (bounds[0] - 1.8 * max_extent, center[1] - 0.75 * max_extent, center[2] + 0.35 * max_extent),
+        (bounds[0] - 2.2 * max_extent, center[1], center[2] + 0.08 * max_extent),
         center,
         (0, 0, 1),
     ]
     plotter.camera.zoom(1.18)
+    plotter.enable_parallel_projection()
 
     try:
         image = plotter.screenshot(return_img=True)
@@ -194,8 +171,9 @@ def render_cutaway_with_pyvista(volume: np.ndarray, image_size: int = 480) -> np
 
     return np.asarray(image)[..., :3]
 
+
 def render_cutaway_fallback(volume: np.ndarray, image_size: int = 480) -> np.ndarray:
-    """Fallback when PyVista is unavailable: project the remaining half volume."""
+    """Fallback when PyVista is unavailable: show only the half-cut foreground projection."""
     mask = clean_foreground_mask(volume)
     x_mid = mask.shape[0] // 2
     half_mask = mask.copy()
