@@ -103,7 +103,7 @@ def downsample_volume_and_mask(volume: np.ndarray, mask: np.ndarray, max_size: i
 
 
 def render_cutaway_with_pyvista(volume: np.ndarray, image_size: int = 480) -> np.ndarray:
-    """Render a genuinely open half-cut foreground surface using PyVista/VTK."""
+    """Remove half of the foreground voxel volume and render the remaining half."""
     import pyvista as pv
 
     full_mask = clean_foreground_mask(volume)
@@ -111,33 +111,28 @@ def render_cutaway_with_pyvista(volume: np.ndarray, image_size: int = 480) -> np
     if not np.any(small_mask):
         return np.zeros((image_size, image_size, 3), dtype=np.uint8)
 
-    pv.global_theme.window_size = [image_size, image_size]
-    pv.global_theme.background = "black"
-    pv.global_theme.smooth_shading = True
+    # This is the actual cut: remove half of the voxel volume before rendering.
+    # The removed half is x < x_mid; the remaining half is rendered as a volume.
+    x_mid = small_mask.shape[0] // 2
+    half_mask = small_mask.copy()
+    half_mask[:x_mid, :, :] = False
 
-    smooth_mask = ndi.gaussian_filter(small_mask.astype(np.float32), sigma=1.0)
-
-    grid = pv.ImageData()
-    grid.dimensions = smooth_mask.shape
-    grid.spacing = (step, step, step)
-    grid.point_data["foreground"] = smooth_mask.ravel(order="F")
-    surface = grid.contour([0.5], scalars="foreground")
-    if surface.n_points == 0 or surface.n_cells == 0:
+    if not np.any(half_mask):
         return np.zeros((image_size, image_size, 3), dtype=np.uint8)
 
-    try:
-        surface = surface.smooth_taubin(n_iter=45, pass_band=0.06)
-    except Exception:
-        surface = surface.smooth(n_iter=35, relaxation_factor=0.08)
+    # Smooth only for visualization, after the physical half-volume removal.
+    density = ndi.gaussian_filter(half_mask.astype(np.float32), sigma=1.0)
+    density[density < 0.08] = 0.0
 
-    x_cut = 0.5 * step * (small_mask.shape[0] - 1)
-    cell_centers = surface.cell_centers().points
-    keep_cells = np.flatnonzero(cell_centers[:, 0] >= x_cut)
-    open_surface = surface.extract_cells(keep_cells).extract_surface(algorithm="dataset_surface")
-    if open_surface.n_points == 0 or open_surface.n_cells == 0:
-        open_surface = surface
+    pv.global_theme.window_size = [image_size, image_size]
+    pv.global_theme.background = "black"
 
-    bounds = np.array(open_surface.bounds, dtype=np.float32)
+    grid = pv.ImageData()
+    grid.dimensions = density.shape
+    grid.spacing = (step, step, step)
+    grid.point_data["density"] = density.ravel(order="F")
+
+    bounds = np.array(grid.bounds, dtype=np.float32)
     center = (
         0.5 * (bounds[0] + bounds[1]),
         0.5 * (bounds[2] + bounds[3]),
@@ -147,17 +142,22 @@ def render_cutaway_with_pyvista(volume: np.ndarray, image_size: int = 480) -> np
 
     plotter = pv.Plotter(off_screen=True, window_size=(image_size, image_size), border=False)
     plotter.set_background("black")
-    plotter.add_mesh(
-        open_surface,
-        color=(0.74, 0.74, 0.70),
-        opacity=0.92,
-        smooth_shading=True,
-        specular=0.18,
-        roughness=0.70,
+    plotter.add_volume(
+        grid,
+        scalars="density",
+        cmap="gray",
+        opacity=[0.0, 0.0, 0.08, 0.28, 0.62, 0.88],
+        clim=(0.0, 1.0),
+        shade=True,
+        diffuse=0.85,
+        specular=0.10,
+        show_scalar_bar=False,
     )
 
+    # Look from the removed side toward the remaining half, so the missing half
+    # and open cut are visible instead of hidden behind the outer silhouette.
     plotter.camera_position = [
-        (bounds[0] - 1.9 * max_extent, center[1] - 0.85 * max_extent, center[2] + 0.28 * max_extent),
+        (bounds[0] - 1.8 * max_extent, center[1] - 0.55 * max_extent, center[2] + 0.20 * max_extent),
         center,
         (0, 0, 1),
     ]
@@ -172,7 +172,7 @@ def render_cutaway_with_pyvista(volume: np.ndarray, image_size: int = 480) -> np
     return np.asarray(image)[..., :3]
 
 def render_cutaway_fallback(volume: np.ndarray, image_size: int = 480) -> np.ndarray:
-    """Fallback when PyVista is unavailable: show only the half-cut foreground projection."""
+    """Fallback when PyVista is unavailable: project the remaining half volume."""
     mask = clean_foreground_mask(volume)
     x_mid = mask.shape[0] // 2
     half_mask = mask.copy()
