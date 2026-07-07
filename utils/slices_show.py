@@ -118,10 +118,7 @@ def largest_connected_component(mask: np.ndarray) -> np.ndarray:
 
 
 def clean_foreground_mask(volume: np.ndarray) -> np.ndarray:
-    mask = foreground_mask_from_otsu(volume)
-    mask = ndi.binary_fill_holes(mask)
-    mask = largest_connected_component(mask)
-    return mask.astype(bool)
+    return foreground_mask_from_otsu(volume).astype(bool)
 
 
 def downsample_volume_and_mask(volume: np.ndarray, mask: np.ndarray, max_size: int = 96) -> tuple[np.ndarray, np.ndarray, int]:
@@ -130,36 +127,40 @@ def downsample_volume_and_mask(volume: np.ndarray, mask: np.ndarray, max_size: i
 
 
 def render_cutaway_with_pyvista(volume: np.ndarray, image_size: int = 480) -> np.ndarray:
-    """Remove half of the foreground voxel volume and render the remaining half."""
+    """Otsu-threshold, remove half of the voxel volume, then render it as a 3D surface."""
     import pyvista as pv
 
-    full_mask = clean_foreground_mask(volume)
+    full_mask = foreground_mask_from_otsu(volume)
     _, small_mask, step = downsample_volume_and_mask(volume, full_mask)
     if not np.any(small_mask):
         return np.zeros((image_size, image_size, 3), dtype=np.uint8)
 
-    # This is the actual cut: remove half of the voxel volume before rendering.
-    # The removed half is x < x_mid; the remaining half is rendered as a volume.
+    # Actual requested cut: remove half of the thresholded voxel volume.
     x_mid = small_mask.shape[0] // 2
     half_mask = small_mask.copy()
     half_mask[:x_mid, :, :] = False
-
     if not np.any(half_mask):
         return np.zeros((image_size, image_size, 3), dtype=np.uint8)
 
-    # Smooth only for visualization, after the physical half-volume removal.
-    density = ndi.gaussian_filter(half_mask.astype(np.float32), sigma=1.0)
-    density[density < 0.08] = 0.0
-
     pv.global_theme.window_size = [image_size, image_size]
     pv.global_theme.background = "black"
+    pv.global_theme.smooth_shading = True
 
     grid = pv.ImageData()
-    grid.dimensions = density.shape
+    grid.dimensions = half_mask.shape
     grid.spacing = (step, step, step)
-    grid.point_data["density"] = density.ravel(order="F")
+    grid.point_data["foreground"] = half_mask.astype(np.float32).ravel(order="F")
 
-    bounds = np.array(grid.bounds, dtype=np.float32)
+    surface = grid.contour([0.5], scalars="foreground")
+    if surface.n_points == 0 or surface.n_cells == 0:
+        return np.zeros((image_size, image_size, 3), dtype=np.uint8)
+
+    try:
+        surface = surface.smooth_taubin(n_iter=25, pass_band=0.08)
+    except Exception:
+        pass
+
+    bounds = np.array(surface.bounds, dtype=np.float32)
     center = (
         0.5 * (bounds[0] + bounds[1]),
         0.5 * (bounds[2] + bounds[3]),
@@ -169,27 +170,22 @@ def render_cutaway_with_pyvista(volume: np.ndarray, image_size: int = 480) -> np
 
     plotter = pv.Plotter(off_screen=True, window_size=(image_size, image_size), border=False)
     plotter.set_background("black")
-    plotter.add_volume(
-        grid,
-        scalars="density",
-        cmap="gray",
-        opacity=[0.0, 0.0, 0.08, 0.28, 0.62, 0.88],
-        clim=(0.0, 1.0),
-        shade=True,
-        diffuse=0.85,
-        specular=0.10,
-        show_scalar_bar=False,
+    plotter.add_mesh(
+        surface,
+        color=(0.74, 0.74, 0.70),
+        opacity=0.96,
+        smooth_shading=True,
+        specular=0.22,
+        roughness=0.58,
     )
 
-    # Look from the removed side toward the remaining half, so the missing half
-    # and open cut are visible instead of hidden behind the outer silhouette.
+    # Perspective + oblique camera makes it read as 3D in the small panel.
     plotter.camera_position = [
-        (bounds[0] - 1.8 * max_extent, center[1] - 0.55 * max_extent, center[2] + 0.20 * max_extent),
+        (bounds[0] - 1.8 * max_extent, center[1] - 0.75 * max_extent, center[2] + 0.35 * max_extent),
         center,
         (0, 0, 1),
     ]
     plotter.camera.zoom(1.18)
-    plotter.enable_parallel_projection()
 
     try:
         image = plotter.screenshot(return_img=True)
