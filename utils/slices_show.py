@@ -131,8 +131,9 @@ def render_cutaway_with_pyvista(volume: np.ndarray, image_size: int = 480) -> np
     """Render the full foreground surface using PyVista/VTK."""
     import pyvista as pv
 
-    full_mask = clean_foreground_mask(volume)
-    _, small_mask, step = downsample_volume_and_mask(volume, full_mask)
+    cut_volume = volume[64:, :, :]
+    full_mask = clean_foreground_mask(cut_volume)
+    _, small_mask, step = downsample_volume_and_mask(cut_volume, full_mask)
     if not np.any(small_mask):
         return np.zeros((image_size, image_size, 3), dtype=np.uint8)
 
@@ -172,9 +173,10 @@ def render_cutaway_with_pyvista(volume: np.ndarray, image_size: int = 480) -> np
         color=(0.78, 0.78, 0.74),
         opacity=1.0,
         smooth_shading=True,
-        specular=0.08,
+        specular=0.06,
         roughness=0.88,
-        culling="back",
+        ambient=0.45,
+        diffuse=0.75,
     )
 
     # View from a 45-degree diagonal in the X-Y plane while keeping the 50% cut.
