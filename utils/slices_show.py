@@ -178,6 +178,23 @@ def render_cutaway_with_pyvista(volume: np.ndarray, image_size: int = 480) -> np
         ambient=0.45,
         diffuse=0.75,
     )
+    try:
+        edge_lines = render_surface.extract_feature_edges(
+            boundary_edges=True,
+            feature_edges=True,
+            manifold_edges=False,
+            non_manifold_edges=False,
+            feature_angle=38,
+        )
+        if edge_lines.n_points > 0:
+            plotter.add_mesh(
+                edge_lines,
+                color=(0.05, 0.05, 0.05),
+                line_width=1.0,
+                opacity=0.45,
+            )
+    except Exception:
+        pass
 
     # View from a 45-degree diagonal in the X-Y plane while keeping the 50% cut.
     diagonal_offset = 2.2 * max_extent / np.sqrt(2.0)
