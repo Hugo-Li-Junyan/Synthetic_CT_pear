@@ -142,6 +142,7 @@ def plot_metrics(df, output_path):
     hue_order = ["nosyn", "syn"]
     palette = {"nosyn": "#0072B2", "syn": "#E69F00"}
     y_limit = min(1.05, max(summary["max_value"].max() + 0.08, 0.1))
+    legend_handles = None
 
     for ax, metric in zip(axes, METRIC_ORDER):
         metric_summary = summary[summary["metric"] == metric]
@@ -162,12 +163,13 @@ def plot_metrics(df, output_path):
         ax.set_ylabel("Average" if metric == METRIC_ORDER[0] else "")
         ax.set_title(metric.capitalize())
         ax.set_ylim(0, y_limit)
+        if legend_handles is None:
+            legend_handles, _ = ax.get_legend_handles_labels()
         if ax.get_legend() is not None:
             ax.get_legend().remove()
 
-    handles, _ = axes[-1].get_legend_handles_labels()
     fig.legend(
-        handles,
+        legend_handles,
         ["Without synthetic", "Synthetic"],
         title="Training data",
         loc="center left",
