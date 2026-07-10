@@ -132,22 +132,6 @@ def add_min_max_markers(ax, metric_summary, y_limit):
         y_max = row["max_value"]
         ax.vlines(center, y_min, y_max, color="black", linewidth=1.4, zorder=4)
         ax.scatter([center, center], [y_min, y_max], color="black", s=24, zorder=5)
-        ax.text(
-            center,
-            min(y_max + 0.01, y_limit - 0.005),
-            f"max {y_max:.3f}",
-            ha="center",
-            va="bottom",
-            fontsize=7,
-        )
-        ax.text(
-            center,
-            max(y_min - 0.02, 0),
-            f"min {y_min:.3f}",
-            ha="center",
-            va="top",
-            fontsize=7,
-        )
 
 
 def plot_metrics(df, output_path):
@@ -156,7 +140,7 @@ def plot_metrics(df, output_path):
 
     fig, axes = plt.subplots(1, len(METRIC_ORDER), figsize=(18, 6), sharey=True)
     hue_order = ["nosyn", "syn"]
-    palette = {"nosyn": "#4c78a8", "syn": "#f58518"}
+    palette = {"nosyn": "#0072B2", "syn": "#E69F00"}
     y_limit = min(1.05, max(summary["max_value"].max() + 0.08, 0.1))
 
     for ax, metric in zip(axes, METRIC_ORDER):
@@ -175,15 +159,22 @@ def plot_metrics(df, output_path):
 
         add_min_max_markers(ax, metric_summary, y_limit)
         ax.set_xlabel("Data proportion")
-        ax.set_ylabel("Average across seeds" if metric == METRIC_ORDER[0] else "")
+        ax.set_ylabel("Average" if metric == METRIC_ORDER[0] else "")
         ax.set_title(metric.capitalize())
         ax.set_ylim(0, y_limit)
-        if metric != METRIC_ORDER[-1] and ax.get_legend() is not None:
+        if ax.get_legend() is not None:
             ax.get_legend().remove()
 
-    axes[-1].legend(title="Training data", labels=["Without synthetic", "Synthetic"])
-    fig.suptitle("Binary Classification Test Metrics by Data Proportion")
-    fig.tight_layout()
+    handles, _ = axes[-1].get_legend_handles_labels()
+    fig.legend(
+        handles,
+        ["Without synthetic", "Synthetic"],
+        title="Training data",
+        loc="center left",
+        bbox_to_anchor=(1.01, 0.5),
+        frameon=False,
+    )
+    fig.tight_layout(rect=(0, 0, 0.88, 1))
 
     output_path.parent.mkdir(parents=True, exist_ok=True)
     fig.savefig(output_path, dpi=300)
