@@ -651,7 +651,7 @@ def parse_args():
     parser.add_argument("--pseudo_threshold", type=float, default=0.95, help="minimum softmax confidence for pseudo labels")
     parser.add_argument("--pseudo_weight", type=float, default=0.3, help="loss weight for pseudo-labeled samples")
     parser.add_argument("--pseudo_steps_per_batch", type=int, default=3, help="unlabeled batches to evaluate for each labeled batch")
-    parser.add_argument("--early_stop_patience", type=int, default=40, help="epochs without validation loss improvement before stopping; set 0 to disable")
+    parser.add_argument("--early_stop_patience", type=int, default=20, help="epochs without validation loss improvement before stopping; set 0 to disable")
     parser.add_argument("--early_stop_min_delta", type=float, default=0.0, help="minimum validation loss drop counted as improvement")
     parser.add_argument("--augment", action="store_true", help="enable light 3D augmentation with torchio")
     parser.add_argument("--amp", action="store_true", help="use CUDA automatic mixed precision")
