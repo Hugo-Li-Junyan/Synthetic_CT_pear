@@ -169,14 +169,13 @@ def plot_metrics(df, output_path):
             ax.get_legend().remove()
 
     fig.legend(
-        legend_handles,
         ["Without synthetic", "Synthetic"],
         title="Training data",
         loc="center left",
-        bbox_to_anchor=(1.01, 0.5),
-        frameon=False,
+        bbox_to_anchor=(0.84, 0.85),
+        frameon=True,
     )
-    fig.tight_layout(rect=(0, 0, 0.88, 1))
+    fig.tight_layout(rect=(0, 0, 0.92, 1))
 
     output_path.parent.mkdir(parents=True, exist_ok=True)
     fig.savefig(output_path, dpi=300)
