@@ -117,7 +117,7 @@ def build_transform(augment):
 
     return tio.Compose([
         tio.RandomFlip(axes=(0, 1)),
-        tio.RandomAffine(scales=(0.9, 1.1), degrees=(0, 0, 0, 0, -30, 30), isotropic=True),
+        tio.RandomAffine(scales=(0.9, 1.1), degrees=20, isotropic=True),
         tio.RandomGamma(log_gamma=(-0.2, 0.2)),
     ])
 
