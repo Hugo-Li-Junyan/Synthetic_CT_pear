@@ -6,6 +6,7 @@ from pathlib import Path
 
 import matplotlib.pyplot as plt
 import numpy as np
+import seaborn as sns
 import torch
 from matplotlib.lines import Line2D
 from sklearn.decomposition import PCA
@@ -121,17 +122,26 @@ def reduce_to_2d(features, method, random_state, pca_components, tsne_perplexity
 
 
 def plot_embedding(embedding, sources, labels, output_path, title):
-    source_markers = {
-        "train": "o",
-        "test": "^",
-        "synthetic": "s",
+    sns.set_theme(style="whitegrid", context="notebook")
+    palette = sns.color_palette("colorblind")
+    source_colors = {
+        "train": palette[0],
+        "test": palette[1],
+        "synthetic": (0.55, 0.55, 0.55),
     }
-    unique_labels = sorted(set(labels.tolist()))
-    cmap = plt.get_cmap("tab10")
-    label_colors = {label: cmap(idx % 10) for idx, label in enumerate(unique_labels)}
+    label_markers = {
+        "0": "o",
+        "1": "s",
+        "2": "^",
+        "3": "D",
+        "synthetic": "X",
+    }
+    unique_labels = sorted(set(labels.tolist()), key=lambda value: (value == "synthetic", value))
+    for label in unique_labels:
+        label_markers.setdefault(label, "P")
 
-    fig, ax = plt.subplots(figsize=(9, 7))
-    for source in source_markers:
+    fig, ax = plt.subplots(figsize=(9.5, 7.2))
+    for source, color in source_colors.items():
         for label in unique_labels:
             mask = (sources == source) & (labels == label)
             if not np.any(mask):
@@ -139,29 +149,32 @@ def plot_embedding(embedding, sources, labels, output_path, title):
             ax.scatter(
                 embedding[mask, 0],
                 embedding[mask, 1],
-                marker=source_markers[source],
-                color=label_colors[label],
-                edgecolors="black",
-                linewidths=0.4,
-                s=60,
-                alpha=0.85,
+                marker=label_markers[label],
+                color=color,
+                edgecolors="white",
+                linewidths=0.45,
+                s=78,
+                alpha=0.9,
             )
 
-    ax.set_title(title)
-    ax.set_xlabel("dim 1")
-    ax.set_ylabel("dim 2")
+    ax.set_title(title, fontsize=13, pad=12)
+    ax.set_xlabel("Embedding dimension 1")
+    ax.set_ylabel("Embedding dimension 2")
+    sns.despine(fig=fig, ax=ax)
 
-    shape_handles = [
-        Line2D([0], [0], marker=marker, color="black", linestyle="", label=source, markersize=8)
-        for source, marker in source_markers.items()
-    ]
     color_handles = [
-        Line2D([0], [0], marker="o", color=color, linestyle="", label=f"class {label}", markersize=8)
-        for label, color in label_colors.items()
+        Line2D([0], [0], marker="o", color=color, markerfacecolor=color,
+               linestyle="", label=source, markersize=8)
+        for source, color in source_colors.items()
     ]
-    shape_legend = ax.legend(handles=shape_handles, title="source", loc="upper right")
-    ax.add_artist(shape_legend)
-    ax.legend(handles=color_handles, title="class", loc="lower right")
+    shape_handles = [
+        Line2D([0], [0], marker=label_markers[label], color="black",
+               markerfacecolor="black", linestyle="", label=str(label), markersize=8)
+        for label in unique_labels
+    ]
+    color_legend = ax.legend(handles=color_handles, title="source", loc="upper right", frameon=True)
+    ax.add_artist(color_legend)
+    ax.legend(handles=shape_handles, title="defective label", loc="lower right", frameon=True)
 
     output_path = Path(output_path)
     output_path.parent.mkdir(parents=True, exist_ok=True)
@@ -177,7 +190,7 @@ def write_embedding_csv(path, embedding, sources, labels):
         writer = csv.writer(file)
         writer.writerow(["source", "label", "x", "y"])
         for source, label, point in zip(sources, labels, embedding):
-            writer.writerow([source, int(label), float(point[0]), float(point[1])])
+            writer.writerow([source, label, float(point[0]), float(point[1])])
 
 
 def main():
@@ -195,7 +208,6 @@ def main():
     parser.add_argument("--test_split", type=float, default=0.1, help="test split ratio, matching train_vae.py")
     parser.add_argument("--random_state", type=int, default=42, help="seed for split, sampling, and reduction")
     parser.add_argument("--sample_count", type=int, default=50, help="samples drawn from each of train/test/synthetic")
-    parser.add_argument("--synthetic_label", type=int, default=-1, help="class label assigned to synthetic samples")
     parser.add_argument("--batch_size", type=int, default=4, help="encoding batch size")
     parser.add_argument("--num_workers", type=int, default=0, help="DataLoader workers")
     parser.add_argument("--method", choices=("umap", "tsne", "pca"), default="umap",
@@ -242,10 +254,14 @@ def main():
         args.num_workers,
         "synthetic",
     )
-    synthetic_labels = np.full(len(synthetic_features), args.synthetic_label)
+    synthetic_labels = np.full(len(synthetic_features), "synthetic", dtype=object)
 
     features = np.concatenate([train_features, test_features, synthetic_features], axis=0)
-    labels = np.concatenate([train_labels, test_labels, synthetic_labels], axis=0).astype(int)
+    labels = np.concatenate([
+        train_labels.astype(int).astype(str),
+        test_labels.astype(int).astype(str),
+        synthetic_labels,
+    ], axis=0)
     sources = np.asarray(
         ["train"] * len(train_features)
         + ["test"] * len(test_features)
