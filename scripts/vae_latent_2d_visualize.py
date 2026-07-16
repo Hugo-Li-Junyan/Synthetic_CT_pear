@@ -121,7 +121,14 @@ def reduce_to_2d(features, method, random_state, pca_components, tsne_perplexity
     return reducer.fit_transform(pre_reduced), f"PCA({max_pca_components}) + t-SNE"
 
 
-def plot_embedding(embedding, sources, labels, output_path, title):
+def pca_2d_explained_variance(features, random_state):
+    pca = PCA(n_components=2, random_state=random_state)
+    pca.fit(features)
+    ratios = pca.explained_variance_ratio_
+    return ratios, float(np.sum(ratios))
+
+
+def plot_embedding(embedding, sources, labels, output_path):
     sns.set_theme(style="whitegrid", context="notebook")
     palette = sns.color_palette("colorblind")
     source_colors = {
@@ -130,13 +137,12 @@ def plot_embedding(embedding, sources, labels, output_path, title):
         "synthetic": (0.55, 0.55, 0.55),
     }
     label_markers = {
-        "0": "o",
-        "1": "s",
-        "2": "^",
-        "3": "D",
+        "non-consumable": "o",
+        "consumable": "s",
         "synthetic": "X",
     }
-    unique_labels = sorted(set(labels.tolist()), key=lambda value: (value == "synthetic", value))
+    label_order = {"consumable": 0, "non-consumable": 1, "synthetic": 2}
+    unique_labels = sorted(set(labels.tolist()), key=lambda value: label_order.get(value, 99))
     for label in unique_labels:
         label_markers.setdefault(label, "P")
 
@@ -157,7 +163,6 @@ def plot_embedding(embedding, sources, labels, output_path, title):
                 alpha=0.9,
             )
 
-    ax.set_title(title, fontsize=13, pad=12)
     ax.set_xlabel("Embedding dimension 1")
     ax.set_ylabel("Embedding dimension 2")
     sns.despine(fig=fig, ax=ax)
@@ -257,9 +262,12 @@ def main():
     synthetic_labels = np.full(len(synthetic_features), "synthetic", dtype=object)
 
     features = np.concatenate([train_features, test_features, synthetic_features], axis=0)
+    label_names = {0: "non-consumable", 1: "consumable"}
+    train_label_names = np.asarray([label_names[int(label)] for label in train_labels])
+    test_label_names = np.asarray([label_names[int(label)] for label in test_labels])
     labels = np.concatenate([
-        train_labels.astype(int).astype(str),
-        test_labels.astype(int).astype(str),
+        train_label_names,
+        test_label_names,
         synthetic_labels,
     ], axis=0)
     sources = np.asarray(
@@ -268,7 +276,15 @@ def main():
         + ["synthetic"] * len(synthetic_features)
     )
 
-    embedding, method_name = reduce_to_2d(
+    pca_variance_ratio, pca_variance_total = pca_2d_explained_variance(features, args.random_state)
+    print(
+        "2D PCA explained variance: "
+        f"PC1={pca_variance_ratio[0] * 100:.2f}% "
+        f"PC2={pca_variance_ratio[1] * 100:.2f}% "
+        f"total={pca_variance_total * 100:.2f}%"
+    )
+
+    embedding, _ = reduce_to_2d(
         features,
         args.method,
         args.random_state,
@@ -277,8 +293,7 @@ def main():
         args.umap_neighbors,
         args.umap_min_dist,
     )
-    title = f"VAE latent 2D embedding ({method_name})"
-    plot_embedding(embedding, sources, labels, args.output_path, title)
+    plot_embedding(embedding, sources, labels, args.output_path)
     print(f"Saved plot to {args.output_path}")
 
     if args.embedding_csv:
@@ -288,3 +303,4 @@ def main():
 
 if __name__ == "__main__":
     main()
+
