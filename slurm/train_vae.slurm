@@ -4,7 +4,7 @@
 #SBATCH --output=train_vae_job.out
 #SBATCH --error=train_vae_job.err
 
-#SBATCH --partition=gpu_a100
+#SBATCH --partition=gpu_h100
 #SBATCH --ntasks=1
 #SBATCH --cpus-per-gpu=8
 #SBATCH --time=48:00:00
@@ -19,7 +19,7 @@ source /data/leuven/362/vsc36240/miniconda3_wice/etc/profile.d/conda.sh
 conda activate base
 cd /data/leuven/362/vsc36240/project/synthetic_data/Synthetic_CT_pear
 # Run your script with parameters
-python ./train_vae.py --image_dir ../images --labels_csv ../labels.csv --label_column browning --save_dir ../model --vae_base_channel 256  --random_state 369
+python ./train_vae.py --image_dir ../standardized --labels_csv ../labels.csv --label_column browning --save_dir ../model --vae_base_channel 256  --random_state 369
 
 # Optional: deactivate conda env (not necessary, but clean)
 conda deactivate
